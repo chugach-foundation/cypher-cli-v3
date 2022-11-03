@@ -1,0 +1,15 @@
+[
+    {
+        "name": "",
+        "address": "",
+        "decimals": 0,
+        "orderbook": "",
+        "bids": "",
+        "asks": "",
+        "eventQueue": "",
+        "baseMultiplier": 1,
+        "quoteMultiplier": 1,
+        "assetWeight": 100,
+        "liabilityWeight": 100
+    }
+]
