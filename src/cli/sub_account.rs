@@ -46,7 +46,7 @@ pub enum SubAccountSubCommand {
         account_number: Option<u8>,
         sub_account_number: Option<u8>,
         symbol: String,
-        amount: u64,
+        amount: I80F48,
     },
     Peek {
         account_number: Option<u8>,
@@ -56,7 +56,7 @@ pub enum SubAccountSubCommand {
         account_number: Option<u8>,
         sub_account_number: Option<u8>,
         symbol: String,
-        amount: u64,
+        amount: I80F48,
     },
 }
 
@@ -243,7 +243,23 @@ pub fn parse_sub_account_command(
                 None => None,
             };
             let symbol = matches.value_of("symbol").unwrap().to_string();
-            let amount = u64::from_str(matches.value_of("amount").unwrap()).unwrap();
+            let amount = match matches.value_of("amount") {
+                Some(s) => match I80F48::from_str(s) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return Err(Box::new(CliError::BadParameters(format!(
+                            "Invalid amount.: {}",
+                            e.to_string()
+                        ))));
+                    }
+                },
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Amount not provided. value should be in token, non-native units."
+                            .to_string(),
+                    )));
+                }
+            };
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Deposit {
                 account_number,
                 sub_account_number,
@@ -261,7 +277,23 @@ pub fn parse_sub_account_command(
                 None => None,
             };
             let symbol = matches.value_of("symbol").unwrap().to_string();
-            let amount = u64::from_str(matches.value_of("amount").unwrap()).unwrap();
+            let amount = match matches.value_of("amount") {
+                Some(s) => match I80F48::from_str(s) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return Err(Box::new(CliError::BadParameters(format!(
+                            "Invalid amount.: {}",
+                            e.to_string()
+                        ))));
+                    }
+                },
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Amount not provided. value should be in token, non-native units."
+                            .to_string(),
+                    )));
+                }
+            };
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Withdraw {
                 account_number,
                 sub_account_number,
@@ -403,7 +435,7 @@ pub async fn deposit(
     account_number: Option<u8>,
     sub_account_number: Option<u8>,
     symbol: &str,
-    amount: u64,
+    amount: I80F48,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
@@ -460,9 +492,13 @@ pub async fn deposit(
                 &spl_token::id(),
                 Some(
                     amount
-                        * 10_u64
-                            .checked_pow(pool.state.config.decimals as u32)
-                            .unwrap(),
+                        .checked_mul(I80F48::from(
+                            10_u64
+                                .checked_pow(pool.state.config.decimals as u32)
+                                .unwrap(),
+                        ))
+                        .unwrap()
+                        .to_num(),
                 ),
             ),
             spl_token::instruction::initialize_account(
@@ -493,9 +529,13 @@ pub async fn deposit(
         &pool.state.token_mint,
         &keypair.pubkey(),
         amount
-            * 10_u64
-                .checked_pow(pool.state.config.decimals as u32)
-                .unwrap(),
+            .checked_mul(I80F48::from(
+                10_u64
+                    .checked_pow(pool.state.config.decimals as u32)
+                    .unwrap(),
+            ))
+            .unwrap()
+            .to_num(),
     ));
 
     // If it a Wrapped SOL deposit we can close the account after depositing
@@ -544,7 +584,7 @@ pub async fn withdraw(
     account_number: Option<u8>,
     sub_account_number: Option<u8>,
     symbol: &str,
-    amount: u64,
+    amount: I80F48,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
@@ -601,12 +641,7 @@ pub async fn withdraw(
                     &token_account,
                     TokenAccount::LEN,
                     &spl_token::id(),
-                    Some(
-                        amount
-                            * 10_u64
-                                .checked_pow(pool.state.config.decimals as u32)
-                                .unwrap(),
-                    ),
+                    None,
                 ),
                 spl_token::instruction::initialize_account(
                     &spl_token::id(),
@@ -637,9 +672,13 @@ pub async fn withdraw(
         &pool.state.token_mint,
         &keypair.pubkey(),
         amount
-            * 10_u64
-                .checked_pow(pool.state.config.decimals as u32)
-                .unwrap(),
+            .checked_mul(I80F48::from(
+                10_u64
+                    .checked_pow(pool.state.config.decimals as u32)
+                    .unwrap(),
+            ))
+            .unwrap()
+            .to_num(),
     ));
 
     // If it a Wrapped SOL deposit we can close the account after withdrawing so the SOL goes to the wallet

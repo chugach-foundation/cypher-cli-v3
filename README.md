@@ -4,9 +4,6 @@
 
 This project contains contains some useful command-line utilities, such as:
 
-- `tail`
-  - `fills`
-  - `ob`
 - `account`
   - `create`
   - `peek`
