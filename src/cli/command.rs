@@ -47,7 +47,7 @@ pub enum CliCommand {
     Perpetuals(PerpetualsSubCommand),
     Spot(SpotSubCommand),
     Liquidator,
-    MarketMaker,
+    MarketMaker { path: String },
 }
 
 pub fn parse_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
@@ -89,9 +89,10 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
                 create_whitelisted_account(config, private_clearing, whitelist, *account_number)
                     .await
             }
-            AccountSubCommand::Peek { account_number } => {
-                peek_account(config, *account_number).await
-            }
+            AccountSubCommand::Peek {
+                account_number,
+                pubkey,
+            } => peek_account(config, *account_number, *pubkey).await,
         },
         CliCommand::FaucetList => match list_faucets(config).await {
             Ok(r) => Ok(r),
@@ -103,7 +104,9 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             Err(e) => Err(Box::new(CliError::ClientError(e))),
         },
         CliCommand::Liquidator => process_liquidator_command(config),
-        CliCommand::MarketMaker => process_market_maker_command(config).await,
+        CliCommand::MarketMaker { path } => {
+            process_market_maker_command(config, path.as_str()).await
+        }
         CliCommand::List(list_command) => match list_command {
             ListSubCommand::PerpetualMarkets => list_perp_markets(config).await,
             ListSubCommand::FuturesMarkets => list_futures_markets(config).await,
@@ -130,7 +133,8 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             SubAccountSubCommand::Peek {
                 account_number,
                 sub_account_number,
-            } => peek_sub_account(config, *account_number, *sub_account_number).await,
+                pubkey,
+            } => peek_sub_account(config, *account_number, *sub_account_number, *pubkey).await,
             SubAccountSubCommand::Deposit {
                 account_number,
                 sub_account_number,

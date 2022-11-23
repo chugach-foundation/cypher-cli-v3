@@ -7,8 +7,9 @@ use cypher_client::{
         create_whitelisted_account as create_whitelisted_account_ix,
     },
     utils::{derive_account_address, derive_public_clearing_address},
+    CypherAccount,
 };
-use cypher_utils::utils::create_transaction;
+use cypher_utils::utils::{create_transaction, get_cypher_zero_copy_account};
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 
 use super::{command::CliCommand, CliConfig, CliError, CliResult};
@@ -28,6 +29,7 @@ pub enum AccountSubCommand {
     },
     Peek {
         account_number: Option<u8>,
+        pubkey: Option<Pubkey>,
     },
 }
 
@@ -96,6 +98,12 @@ impl AccountSubCommands for App<'_, '_> {
                                 .long("account-number")
                                 .takes_value(true)
                                 .help("The Account number, value should fit in a u8."),
+                        )
+                        .arg(
+                            Arg::with_name("pubkey")
+                                .long("pubkey")
+                                .takes_value(true)
+                                .help("The Sub Account pubkey, value should be a pubkey."),
                         ),
                 ),
         )
@@ -141,8 +149,13 @@ pub fn parse_account_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                 Some(a) => Some(u8::from_str(a).unwrap()),
                 None => None,
             };
+            let pubkey = match matches.value_of("pubkey") {
+                Some(a) => Some(Pubkey::from_str(a).unwrap()),
+                None => None,
+            };
             Ok(CliCommand::Account(AccountSubCommand::Peek {
                 account_number,
+                pubkey,
             }))
         }
         ("", None) => {
@@ -271,6 +284,46 @@ pub async fn close_account(
 pub async fn peek_account(
     config: &CliConfig,
     account_number: Option<u8>,
+    pubkey: Option<Pubkey>,
 ) -> Result<CliResult, Box<dyn error::Error>> {
+    let rpc_client = config.rpc_client.as_ref().unwrap();
+    let keypair = config.keypair.as_ref().unwrap();
+
+    let account = if pubkey.is_some() {
+        pubkey.unwrap()
+    } else {
+        // derive account address
+        let (account, _account_bump) = if account_number.is_some() {
+            derive_account_address(&keypair.pubkey(), account_number.unwrap())
+        } else {
+            // derive the first account is the account number is not passed in
+            derive_account_address(&keypair.pubkey(), 0)
+        };
+        account
+    };
+    println!("Using Account: {}", account);
+
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+        .await
+        .unwrap();
+
+    println!(
+        "\n| {:^5} | {:^44} | {:^25} | {:^25} | {:^25} |",
+        "Idx", "Sub Account", "Assets", "Liabilities", "C-Ratio",
+    );
+
+    for (idx, cache) in account.sub_account_caches.iter().enumerate() {
+        if cache.sub_account != Pubkey::default() {
+            println!(
+                "| {:^5} | {:^44} | {:>25} | {:>25} | {:>25} |",
+                idx,
+                cache.sub_account,
+                cache.assets_value(),
+                cache.liabilities_value(),
+                cache.c_ratio()
+            );
+        }
+    }
+
     Ok(CliResult {})
 }

@@ -1,8 +1,3 @@
-use std::{
-    error,
-    str::{from_utf8, FromStr},
-};
-
 use anchor_spl::token::{spl_token, TokenAccount};
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
@@ -27,6 +22,10 @@ use cypher_utils::{
 };
 use fixed::types::I80F48;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey, signature::Keypair, signer::Signer};
+use std::{
+    error,
+    str::{from_utf8, FromStr},
+};
 use thousands::Separable;
 
 use super::{command::CliCommand, CliConfig, CliError, CliResult};
@@ -51,6 +50,7 @@ pub enum SubAccountSubCommand {
     Peek {
         account_number: Option<u8>,
         sub_account_number: Option<u8>,
+        pubkey: Option<Pubkey>,
     },
     Withdraw {
         account_number: Option<u8>,
@@ -140,7 +140,7 @@ impl SubAccountSubCommands for App<'_, '_> {
                                 .short("a")
                                 .long("amount")
                                 .takes_value(true)
-                                .help("The amount, value should be a pubkey."),
+                                .help("The amount, value should be a number."),
                         ),
                 )
                 .subcommand(
@@ -171,7 +171,7 @@ impl SubAccountSubCommands for App<'_, '_> {
                                 .short("a")
                                 .long("amount")
                                 .takes_value(true)
-                                .help("The amount, value should be a pubkey."),
+                                .help("The amount, value should be a number."),
                         ),
                 )
                 .subcommand(
@@ -190,6 +190,12 @@ impl SubAccountSubCommands for App<'_, '_> {
                                 .long("sub-account-number")
                                 .takes_value(true)
                                 .help("The Sub Account number, value should fit in a u8."),
+                        )
+                        .arg(
+                            Arg::with_name("pubkey")
+                                .long("pubkey")
+                                .takes_value(true)
+                                .help("The Sub Account pubkey, value should be a pubkey."),
                         ),
                 ),
         )
@@ -310,9 +316,14 @@ pub fn parse_sub_account_command(
                 Some(a) => Some(u8::from_str(a).unwrap()),
                 None => None,
             };
+            let pubkey = match matches.value_of("pubkey") {
+                Some(a) => Some(Pubkey::from_str(a).unwrap()),
+                None => None,
+            };
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Peek {
                 account_number,
                 sub_account_number,
+                pubkey,
             }))
         }
         ("", None) => {
@@ -726,26 +737,33 @@ pub async fn peek_sub_account(
     config: &CliConfig,
     account_number: Option<u8>,
     sub_account_number: Option<u8>,
+    pubkey: Option<Pubkey>,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
-    // derive account address
-    let (account, _account_bump) = if account_number.is_some() {
-        derive_account_address(&keypair.pubkey(), account_number.unwrap())
+    let sub_account = if pubkey.is_some() {
+        pubkey.unwrap()
     } else {
-        // derive the first account is the account number is not passed in
-        derive_account_address(&keypair.pubkey(), 0)
-    };
-    println!("Using Account: {}", account);
+        // derive account address
+        let (account, _account_bump) = if account_number.is_some() {
+            derive_account_address(&keypair.pubkey(), account_number.unwrap())
+        } else {
+            // derive the first account is the account number is not passed in
+            derive_account_address(&keypair.pubkey(), 0)
+        };
+        println!("Using Account: {}", account);
 
-    // derive sub account address
-    let (sub_account, _sub_account_bump) = if sub_account_number.is_some() {
-        derive_sub_account_address(&account, sub_account_number.unwrap())
-    } else {
-        // derive the first account is the account number is not passed in
-        derive_sub_account_address(&account, 0)
+        // derive sub account address
+        let (sub_account, _sub_account_bump) = if sub_account_number.is_some() {
+            derive_sub_account_address(&account, sub_account_number.unwrap())
+        } else {
+            // derive the first account is the account number is not passed in
+            derive_sub_account_address(&account, 0)
+        };
+        sub_account
     };
+    println!("Using Sub Account: {}", sub_account);
 
     let cache_account = get_cypher_zero_copy_account::<CacheAccount>(
         &rpc_client,

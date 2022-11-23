@@ -1024,6 +1024,7 @@ name = "cypher-cli"
 version = "0.1.0"
 dependencies = [
  "agnostic-orderbook",
+ "anchor-client",
  "anchor-spl",
  "chrono",
  "clap",

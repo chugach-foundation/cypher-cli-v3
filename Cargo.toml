@@ -16,6 +16,7 @@ mainnet-beta = []
 
 [dependencies]
 agnostic-orderbook = { git = "https://github.com/chugach-foundation/agnostic-orderbook.git" }
+anchor-client = "0.25.0"
 anchor-spl = { version = "0.25.0", features = [ "token", "associated_token", "dex", ] }
 chrono = "0.4.19"
 clap = "2.33.1"
