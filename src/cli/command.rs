@@ -31,7 +31,7 @@ use super::{
     },
     sub_account::{
         close_sub_account, create_sub_account, deposit, parse_sub_account_command,
-        peek_sub_account, withdraw, SubAccountSubCommand,
+        peek_sub_account, transfer_between_sub_accounts, withdraw, SubAccountSubCommand,
     },
     CliConfig, CliResult,
 };
@@ -160,6 +160,23 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
                     config,
                     *account_number,
                     *sub_account_number,
+                    symbol.as_str(),
+                    *amount,
+                )
+                .await
+            }
+            SubAccountSubCommand::Transfer {
+                account_number,
+                from_sub_account_number,
+                to_sub_account_number,
+                symbol,
+                amount,
+            } => {
+                transfer_between_sub_accounts(
+                    config,
+                    *account_number,
+                    *from_sub_account_number,
+                    *to_sub_account_number,
                     symbol.as_str(),
                     *amount,
                 )

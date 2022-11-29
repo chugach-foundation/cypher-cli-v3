@@ -1,5 +1,11 @@
 use cypher_client::{
-    instructions::create_orders_account as create_orders_account_ix, OrdersAccount,
+    constants::SUB_ACCOUNT_ALIAS_LEN,
+    instructions::{
+        create_account as create_account_ix, create_orders_account as create_orders_account_ix,
+        create_sub_account as create_sub_account_ix,
+    },
+    utils::{derive_account_address, derive_public_clearing_address, derive_sub_account_address},
+    CypherAccount, CypherSubAccount, OrdersAccount,
 };
 use cypher_utils::utils::{get_cypher_zero_copy_account, send_transactions};
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
@@ -69,6 +75,158 @@ async fn get_orders_account(
     orders_account: &Pubkey,
 ) -> Result<Box<OrdersAccount>, ClientError> {
     match get_cypher_zero_copy_account::<OrdersAccount>(&rpc_client, orders_account).await {
+        Ok(a) => Ok(a),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn get_or_create_account(
+    rpc_client: &Arc<RpcClient>,
+    authority: &Keypair,
+    account_number: u8,
+) -> Result<Box<CypherAccount>, ClientError> {
+    let (account, account_bump) = derive_account_address(&authority.pubkey(), account_number);
+
+    let account_res = get_account(rpc_client, &account).await;
+
+    if account_res.is_ok() {
+        println!("Account number {} already exists.", account_number);
+        Ok(account_res.unwrap())
+    } else {
+        println!(
+            "Could not find Account number {}, attempting to create..",
+            account_number
+        );
+
+        let res = create_account(
+            rpc_client,
+            authority,
+            &account,
+            account_bump,
+            account_number,
+        )
+        .await;
+
+        match res {
+            Ok(()) => (),
+            Err(e) => {
+                return Err(e);
+            }
+        }
+
+        match get_account(rpc_client, &account).await {
+            Ok(a) => Ok(a),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+async fn create_account(
+    rpc_client: &Arc<RpcClient>,
+    authority: &Keypair,
+    master_account: &Pubkey,
+    account_bump: u8,
+    account_number: u8,
+) -> Result<(), ClientError> {
+    let (public_clearing_address, _public_clearing_bump) = derive_public_clearing_address();
+    let ixs = vec![create_account_ix(
+        &public_clearing_address,
+        &authority.pubkey(),
+        &authority.pubkey(),
+        master_account,
+        account_bump,
+        account_number,
+    )];
+    match send_transactions(&rpc_client, ixs, authority, true).await {
+        Ok(s) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+async fn get_account(
+    rpc_client: &Arc<RpcClient>,
+    account: &Pubkey,
+) -> Result<Box<CypherAccount>, ClientError> {
+    match get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, account).await {
+        Ok(a) => Ok(a),
+        Err(e) => Err(e),
+    }
+}
+
+pub async fn get_or_create_sub_account(
+    rpc_client: &Arc<RpcClient>,
+    authority: &Keypair,
+    master_account: &Pubkey,
+    sub_account_number: u8,
+) -> Result<Box<CypherSubAccount>, ClientError> {
+    let (sub_account, sub_account_bump) =
+        derive_sub_account_address(master_account, sub_account_number);
+
+    let account_res = get_sub_account(rpc_client, &sub_account).await;
+
+    if account_res.is_ok() {
+        println!("Sub Account number {} already exists.", sub_account_number);
+        Ok(account_res.unwrap())
+    } else {
+        println!(
+            "Could not find Sub Account number {}, attempting to create..",
+            sub_account_number
+        );
+
+        let res = create_sub_account(
+            rpc_client,
+            authority,
+            master_account,
+            &sub_account,
+            sub_account_bump,
+            sub_account_number,
+            [0; SUB_ACCOUNT_ALIAS_LEN],
+        )
+        .await;
+
+        match res {
+            Ok(()) => (),
+            Err(e) => {
+                return Err(e);
+            }
+        }
+
+        match get_sub_account(rpc_client, &sub_account).await {
+            Ok(a) => Ok(a),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+async fn create_sub_account(
+    rpc_client: &Arc<RpcClient>,
+    authority: &Keypair,
+    master_account: &Pubkey,
+    sub_account: &Pubkey,
+    sub_account_bump: u8,
+    sub_account_number: u8,
+    sub_account_alias: [u8; SUB_ACCOUNT_ALIAS_LEN],
+) -> Result<(), ClientError> {
+    let ixs = vec![create_sub_account_ix(
+        &authority.pubkey(),
+        &authority.pubkey(),
+        master_account,
+        sub_account,
+        sub_account_bump,
+        sub_account_number,
+        sub_account_alias,
+    )];
+    match send_transactions(&rpc_client, ixs, authority, true).await {
+        Ok(s) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+async fn get_sub_account(
+    rpc_client: &Arc<RpcClient>,
+    sub_account: &Pubkey,
+) -> Result<Box<CypherSubAccount>, ClientError> {
+    match get_cypher_zero_copy_account::<CypherSubAccount>(&rpc_client, sub_account).await {
         Ok(a) => Ok(a),
         Err(e) => Err(e),
     }

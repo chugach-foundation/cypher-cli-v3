@@ -1,10 +1,12 @@
 use anchor_spl::token::{spl_token, TokenAccount};
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
+    cache_account,
     constants::{QUOTE_TOKEN_DECIMALS, SUB_ACCOUNT_ALIAS_LEN},
     instructions::{
         close_sub_account as close_sub_account_ix, create_sub_account as create_sub_account_ix,
-        deposit_funds, withdraw_funds,
+        deposit_funds, transfer_between_sub_accounts as transfer_between_sub_accounts_ix,
+        update_account_margin as update_account_margin_ix, withdraw_funds,
     },
     quote_mint,
     utils::{
@@ -12,7 +14,7 @@ use cypher_client::{
         derive_public_clearing_address, derive_sub_account_address, derive_token_address,
         fixed_to_ui, fixed_to_ui_price, native_to_ui, native_to_ui_price,
     },
-    wrapped_sol, CacheAccount, CypherSubAccount, MarginCollateralRatioType,
+    wrapped_sol, CacheAccount, CypherAccount, CypherSubAccount, MarginCollateralRatioType,
 };
 use cypher_utils::{
     contexts::CypherContext,
@@ -55,6 +57,13 @@ pub enum SubAccountSubCommand {
     Withdraw {
         account_number: Option<u8>,
         sub_account_number: Option<u8>,
+        symbol: String,
+        amount: I80F48,
+    },
+    Transfer {
+        account_number: Option<u8>,
+        from_sub_account_number: Option<u8>,
+        to_sub_account_number: Option<u8>,
         symbol: String,
         amount: I80F48,
     },
@@ -197,7 +206,43 @@ impl SubAccountSubCommands for App<'_, '_> {
                                 .takes_value(true)
                                 .help("The Sub Account pubkey, value should be a pubkey."),
                         ),
-                ),
+                )
+                .subcommand(
+                    SubCommand::with_name("transfer")
+                        .about("Transfers funds between Sub Accounts.")
+                        .arg(
+                            Arg::with_name("account-number")
+                                .short("n")
+                                .long("account-number")
+                                .takes_value(true)
+                                .help("The Account number, value should fit in a u8."),
+                        )
+                        .arg(
+                            Arg::with_name("from-sub-account-number")
+                                .long("from-sub-account-number")
+                                .takes_value(true)
+                                .help("The Sub Account from which the asset shall be transferred, value should fit in a u8.")
+                        )
+                        .arg(
+                            Arg::with_name("to-sub-account-number")
+                                .long("to-sub-account-number")
+                                .takes_value(true)
+                                .help("The Sub Account to which the asset shall be transferred, value should fit in a u8.")
+                        )
+                        .arg(
+                            Arg::with_name("symbol")
+                                .long("symbol")
+                                .takes_value(true)
+                                .help("The symbol of the token, e.g \"SOL\"."),
+                        )
+                        .arg(
+                            Arg::with_name("amount")
+                                .short("a")
+                                .long("amount")
+                                .takes_value(true)
+                                .help("The amount, value should be a number."),
+                        ),
+                )
         )
     }
 }
@@ -324,6 +369,45 @@ pub fn parse_sub_account_command(
                 account_number,
                 sub_account_number,
                 pubkey,
+            }))
+        }
+        ("transfer", Some(matches)) => {
+            let account_number = match matches.value_of("account-number") {
+                Some(a) => Some(u8::from_str(a).unwrap()),
+                None => None,
+            };
+            let from_sub_account_number = match matches.value_of("from-sub-account-number") {
+                Some(a) => Some(u8::from_str(a).unwrap()),
+                None => None,
+            };
+            let to_sub_account_number = match matches.value_of("to-sub-account-number") {
+                Some(a) => Some(u8::from_str(a).unwrap()),
+                None => None,
+            };
+            let symbol = matches.value_of("symbol").unwrap().to_string();
+            let amount = match matches.value_of("amount") {
+                Some(s) => match I80F48::from_str(s) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        return Err(Box::new(CliError::BadParameters(format!(
+                            "Invalid amount.: {}",
+                            e.to_string()
+                        ))));
+                    }
+                },
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Amount not provided. value should be in token, non-native units."
+                            .to_string(),
+                    )));
+                }
+            };
+            Ok(CliCommand::SubAccount(SubAccountSubCommand::Transfer {
+                account_number,
+                from_sub_account_number,
+                to_sub_account_number,
+                symbol,
+                amount,
             }))
         }
         ("", None) => {
@@ -723,6 +807,119 @@ pub async fn withdraw(
     } else {
         create_transaction(blockhash, &ixs, keypair, None)
     };
+
+    let sig = rpc_client
+        .send_and_confirm_transaction_with_spinner(&tx)
+        .await?;
+
+    println!("Sucessfully submitted transaction. Signature: {}", sig);
+
+    Ok(CliResult {})
+}
+
+pub async fn transfer_between_sub_accounts(
+    config: &CliConfig,
+    account_number: Option<u8>,
+    from_sub_account_number: Option<u8>,
+    to_sub_account_number: Option<u8>,
+    symbol: &str,
+    amount: I80F48,
+) -> Result<CliResult, Box<dyn error::Error>> {
+    let rpc_client = config.rpc_client.as_ref().unwrap();
+    let keypair = config.keypair.as_ref().unwrap();
+
+    let (clearing, _) = derive_public_clearing_address();
+
+    // derive account address
+    let (account_address, _account_bump) = if account_number.is_some() {
+        derive_account_address(&keypair.pubkey(), account_number.unwrap())
+    } else {
+        // derive the first account is the account number is not passed in
+        derive_account_address(&keypair.pubkey(), 0)
+    };
+    println!("Using Account: {}", account_address);
+
+    let (from_sub_account, _from_sub_account_bump) = if from_sub_account_number.is_some() {
+        derive_sub_account_address(&account_address, from_sub_account_number.unwrap())
+    } else {
+        derive_sub_account_address(&account_address, 0)
+    };
+    println!("Using source Sub Account: {}", from_sub_account);
+
+    let (to_sub_account, _to_sub_account_bump) = if to_sub_account_number.is_some() {
+        derive_sub_account_address(&account_address, to_sub_account_number.unwrap())
+    } else {
+        derive_sub_account_address(&account_address, 0)
+    };
+    println!("Using destination Sub Account: {}", to_sub_account);
+
+    let ctx = CypherContext::load(&rpc_client).await.unwrap();
+    let pools = ctx.pools.read().await;
+    let encoded_symbol = encode_string(symbol);
+
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account_address)
+        .await
+        .unwrap();
+
+    let pool = pools
+        .iter()
+        .find(|p| p.state.pool_name == encoded_symbol)
+        .unwrap();
+
+    let pool_node_info = pool
+        .state
+        .nodes
+        .iter()
+        .find(|n| n.pool_node != Pubkey::default())
+        .unwrap();
+
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
+
+    println!(
+        "Caching {} Sub Accounts before performing operation.",
+        sub_accounts.len()
+    );
+
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &account_address,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        transfer_between_sub_accounts_ix(
+            &clearing,
+            &cache_account::id(),
+            &account_address,
+            &from_sub_account,
+            &to_sub_account,
+            &pool.state.token_mint,
+            &pool_node_info.pool_node,
+            &keypair.pubkey(),
+            amount
+                .checked_mul(I80F48::from(
+                    10_u64
+                        .checked_pow(pool.state.config.decimals as u32)
+                        .unwrap(),
+                ))
+                .unwrap()
+                .to_num(),
+        ),
+    ];
+
+    let blockhash = match rpc_client.get_latest_blockhash().await {
+        Ok(h) => h,
+        Err(e) => {
+            return Err(Box::new(CliError::ClientError(e)));
+        }
+    };
+
+    let tx = create_transaction(blockhash, &ixs, keypair, None);
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
