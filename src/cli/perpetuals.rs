@@ -2,7 +2,10 @@ use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
-    instructions::{cancel_perp_order, new_perp_order, settle_perp_funds},
+    instructions::{
+        cancel_perp_order, new_perp_order, settle_perp_funds,
+        update_account_margin as update_account_margin_ix,
+    },
     utils::{
         convert_price_to_lots, derive_account_address, derive_orders_account_address,
         derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
@@ -17,11 +20,12 @@ use cypher_utils::{
 };
 use fixed::types::I80F48;
 use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
-use solana_sdk::signer::Signer;
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
     ops::Mul,
     str::{from_utf8, FromStr},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use crate::{
@@ -679,7 +683,10 @@ pub async fn process_perps_market_order(
 
     let max_quote_qty = max_base_qty * limit_price;
 
-    println!("{} - {} - {}", limit_price, max_base_qty, max_quote_qty);
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {}",
+        limit_price, max_base_qty, max_quote_qty
+    );
     println!(
         "Placing market {} order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         side.to_string(),
@@ -703,7 +710,7 @@ pub async fn process_perps_market_order(
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
         self_trade_behavior: SelfTradeBehavior::CancelProvide,
-        client_order_id: 0,
+        client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
@@ -864,7 +871,10 @@ pub async fn process_perps_close(
     let mut max_quote_qty = max_base_qty * limit_price;
     max_quote_qty += (max_quote_qty * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
 
-    println!("{} - {} - {}", limit_price, max_base_qty, max_quote_qty);
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {}",
+        limit_price, max_base_qty, max_quote_qty
+    );
     println!(
         "Closing Perp Position on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
@@ -887,7 +897,7 @@ pub async fn process_perps_close(
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
         self_trade_behavior: SelfTradeBehavior::CancelProvide,
-        client_order_id: 0,
+        client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
@@ -952,6 +962,9 @@ pub async fn process_perps_limit_order(
                 == symbol
         })
         .unwrap();
+    let market_name = from_utf8(&market.state.inner.market_name)
+        .unwrap()
+        .trim_matches(char::from(0));
 
     let limit_price = convert_price_to_lots(
         price
@@ -962,11 +975,12 @@ pub async fn process_perps_limit_order(
         market.state.inner.quote_multiplier,
     );
 
-    let native_size = size
+    let max_base_qty = size
         .mul(I80F48::from(
             10u64.pow(market.state.inner.config.decimals as u32),
         ))
         .to_num();
+    let max_quote_qty = max_base_qty * limit_price;
 
     let (master_account, _) = derive_account_address(&keypair.pubkey(), 0); // TODO: change this, allow multiple accounts
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
@@ -1003,14 +1017,33 @@ pub async fn process_perps_limit_order(
         }
     };
 
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {}",
+        limit_price, max_base_qty, max_quote_qty
+    );
+    println!(
+        "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
+        market_name,
+        fixed_to_ui_price(
+            I80F48::from(limit_price),
+            market.state.inner.config.decimals,
+            QUOTE_TOKEN_DECIMALS
+        ),
+        fixed_to_ui(
+            I80F48::from(max_base_qty),
+            market.state.inner.config.decimals
+        ),
+        fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
+    );
+
     let args = NewDerivativeOrderArgs {
         side,
         limit_price,
-        max_base_qty: native_size,
-        max_quote_qty: native_size * limit_price,
+        max_base_qty,
+        max_quote_qty,
         order_type: DerivativeOrderType::PostOnly,
         self_trade_behavior: SelfTradeBehavior::CancelProvide,
-        client_order_id: 0,
+        client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
