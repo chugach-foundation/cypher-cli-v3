@@ -25,6 +25,7 @@ use super::{
         process_perps_close, process_perps_limit_order, process_perps_market_order,
         process_perps_settle_funds, PerpetualsSubCommand,
     },
+    random::{parse_random_command, process_random_command},
     spot::{
         list_spot_open_orders, parse_spot_command, process_spot_limit_order,
         process_spot_market_order, SpotSubCommand,
@@ -39,7 +40,9 @@ use super::{
 #[derive(Debug)]
 pub enum CliCommand {
     FaucetList,
-    FaucetRequest { token_mint: Pubkey },
+    FaucetRequest {
+        token_mint: Pubkey,
+    },
     List(ListSubCommand),
     Account(AccountSubCommand),
     SubAccount(SubAccountSubCommand),
@@ -47,7 +50,14 @@ pub enum CliCommand {
     Perpetuals(PerpetualsSubCommand),
     Spot(SpotSubCommand),
     Liquidator,
-    MarketMaker { path: String },
+    MarketMaker {
+        path: String,
+    },
+    Random {
+        interval: u64,
+        output_keypair: Option<String>,
+        input_keypair: Option<String>,
+    },
 }
 
 pub fn parse_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
@@ -61,6 +71,7 @@ pub fn parse_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::
         ("futures", Some(matches)) => parse_futures_command(matches),
         ("perps", Some(matches)) => parse_perps_command(matches),
         ("spot", Some(matches)) => parse_spot_command(matches),
+        ("random", Some(matches)) => parse_random_command(matches),
         ("", None) => {
             eprintln!("{}", matches.usage());
             return Err(Box::new(CliError::CommandNotRecognized(
@@ -107,6 +118,11 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
         CliCommand::MarketMaker { path } => {
             process_market_maker_command(config, path.as_str()).await
         }
+        CliCommand::Random {
+            interval,
+            output_keypair,
+            input_keypair,
+        } => process_random_command(config, *interval, output_keypair, input_keypair).await,
         CliCommand::List(list_command) => match list_command {
             ListSubCommand::PerpetualMarkets => list_perp_markets(config).await,
             ListSubCommand::FuturesMarkets => list_futures_markets(config).await,

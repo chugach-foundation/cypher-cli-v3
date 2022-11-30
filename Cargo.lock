@@ -1026,6 +1026,7 @@ dependencies = [
  "agnostic-orderbook",
  "anchor-client",
  "anchor-spl",
+ "async-trait",
  "chrono",
  "clap",
  "cypher-client",

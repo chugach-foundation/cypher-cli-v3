@@ -8,12 +8,12 @@ use cypher_client::{
         derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
         derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
     },
-    CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount, SelfTradeBehavior,
-    Side,
+    CancelOrderArgs, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount,
+    SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, UserContext},
-    utils::{encode_string, get_program_accounts, send_transactions},
+    utils::{encode_string, get_cypher_zero_copy_account, get_program_accounts, send_transactions},
 };
 use fixed::types::I80F48;
 use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
@@ -972,6 +972,17 @@ pub async fn process_perps_limit_order(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+        .await
+        .unwrap();
+
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
+
     let encoded_pool_name = encode_string("USDC");
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
@@ -1003,21 +1014,29 @@ pub async fn process_perps_limit_order(
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
-    let ixs = vec![new_perp_order(
-        &public_clearing,
-        &cache_account::id(),
-        &master_account,
-        &sub_account,
-        &market.address,
-        &orders_account,
-        &market.state.inner.orderbook,
-        &market.state.inner.event_queue,
-        &market.state.inner.bids,
-        &market.state.inner.asks,
-        &quote_pool_node,
-        &keypair.pubkey(),
-        args,
-    )];
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &master_account,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        new_perp_order(
+            &public_clearing,
+            &cache_account::id(),
+            &master_account,
+            &sub_account,
+            &market.address,
+            &orders_account,
+            &market.state.inner.orderbook,
+            &market.state.inner.event_queue,
+            &market.state.inner.bids,
+            &market.state.inner.asks,
+            &quote_pool_node,
+            &keypair.pubkey(),
+            args,
+        ),
+    ];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
         Ok(s) => s,

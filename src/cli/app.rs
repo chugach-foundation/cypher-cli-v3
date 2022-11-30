@@ -4,7 +4,8 @@ use solana_clap_utils::input_validators::is_url_or_moniker;
 use super::{
     account::AccountSubCommands, faucet::FaucetSubCommands, futures::FuturesSubCommands,
     liquidator::LiquidatorSubCommands, list::ListSubCommands, market_maker::MarketMakerSubCommands,
-    perpetuals::PerpetualsSubCommands, spot::SpotSubCommands, sub_account::SubAccountSubCommands,
+    perpetuals::PerpetualsSubCommands, random::RandomSubCommands, spot::SpotSubCommands,
+    sub_account::SubAccountSubCommands,
 };
 
 pub fn get_clap_app<'a, 'b>(name: &str, about: &'a str, version: &'b str) -> App<'a, 'b> {
@@ -45,9 +46,10 @@ pub fn get_clap_app<'a, 'b>(name: &str, about: &'a str, version: &'b str) -> App
         .faucet_subcommands()
         .futures_subcommands()
         .liquidator_subcommands()
-        .market_maker_subcommands()
         .list_subcommands()
+        .market_maker_subcommands()
         .perps_subcommands()
+        .random_subcommands()
         .spot_subcommands()
         .sub_account_subcommands()
 }
