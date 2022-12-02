@@ -7,10 +7,7 @@ use tokio::sync::broadcast::channel;
 
 use crate::{
     cli::CliError,
-    market_maker::{
-        config::{load_config, Config},
-        runner::Runner,
-    },
+    market_maker::{config::Config, runner::Runner},
 };
 
 use super::{command::CliCommand, CliConfig, CliResult};

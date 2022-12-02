@@ -6,10 +6,7 @@ use tokio::sync::broadcast::channel;
 
 use crate::{
     cli::CliError,
-    market_maker::{
-        config::{load_config, Config},
-        runner::Runner,
-    },
+    market_maker::{config::Config, runner::Runner},
 };
 
 use super::{command::CliCommand, CliConfig, CliResult};
@@ -76,31 +73,31 @@ pub async fn process_market_maker_command(
 
     info!("Setting up components from config..");
 
-    let shutdown_sender = Arc::new(channel::<bool>(1).0);
+    // let shutdown_sender = Arc::new(channel::<bool>(1).0);
 
-    let mm_config = match load_config(config_path) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("There was an error loading config: {}", e.to_string());
-            return Err(Box::new(CliError::BadParameters(
-                "Failed to load market maker config.".to_string(),
-            )));
-        }
-    };
+    // let mm_config = match load_config(config_path) {
+    //     Ok(c) => c,
+    //     Err(e) => {
+    //         warn!("There was an error loading config: {}", e.to_string());
+    //         return Err(Box::new(CliError::BadParameters(
+    //             "Failed to load market maker config.".to_string(),
+    //         )));
+    //     }
+    // };
 
-    let mut mm_runner = Runner::new(
-        Arc::new(mm_config),
-        Arc::clone(rpc_client),
-        Arc::clone(pubsub_client),
-        Arc::clone(&shutdown_sender),
-    )
-    .await;
+    // let mut mm_runner = Runner::new(
+    //     Arc::new(mm_config),
+    //     Arc::clone(rpc_client),
+    //     Arc::clone(pubsub_client),
+    //     Arc::clone(&shutdown_sender),
+    // )
+    // .await;
 
-    mm_runner.prepare().await;
+    // mm_runner.prepare().await;
 
-    info!("Let's dance! 🔥💃");
+    // info!("Let's dance! 🔥💃");
 
-    mm_runner.run().await;
+    // mm_runner.run().await;
 
     Ok(CliResult {})
 }
