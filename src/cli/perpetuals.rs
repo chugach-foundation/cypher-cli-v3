@@ -11,8 +11,8 @@ use cypher_client::{
         derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
         derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
     },
-    CancelOrderArgs, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount,
-    SelfTradeBehavior, Side,
+    CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
+    OrdersAccount, SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, UserContext},
@@ -454,7 +454,7 @@ pub async fn list_perps_open_orders(
 
         let book = match AgnosticOrderBookContext::load(
             rpc_client,
-            &market.state,
+            market.state.as_ref(),
             &market.address,
             &market.state.inner.bids,
             &market.state.inner.asks,
@@ -599,6 +599,15 @@ pub async fn process_perps_market_order(
     let keypair = config.keypair.as_ref().unwrap();
 
     let (public_clearing, _) = derive_public_clearing_address();
+    let clearing =
+        match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("Failed to load Clearing.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
+    let fee_tiers = clearing.get_fee_tiers();
 
     let ctx = match CypherContext::load_perpetual_markets(rpc_client).await {
         Ok(ctx) => ctx,
@@ -626,6 +635,17 @@ pub async fn process_perps_market_order(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+        .await
+        .unwrap();
+
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
+
     let encoded_pool_name = encode_string("USDC");
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
@@ -648,7 +668,7 @@ pub async fn process_perps_market_order(
 
     let ob_ctx = match AgnosticOrderBookContext::load(
         rpc_client,
-        &market.state,
+        market.state.as_ref(),
         &market.address,
         &market.state.inner.bids,
         &market.state.inner.asks,
@@ -662,7 +682,6 @@ pub async fn process_perps_market_order(
     };
 
     let impact_price = ob_ctx.get_impact_price(size.abs().to_num(), side).await;
-
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(
             format!(
@@ -673,20 +692,36 @@ pub async fn process_perps_market_order(
         )));
     }
 
-    let limit_price = impact_price.unwrap();
+    let user_fee_tier = clearing.get_fee_tier(account.fee_tier);
+    println!(
+        "(debug) User Fee Tier: {} | Maker: {} | Taker: {} | Rebate: {}",
+        user_fee_tier.tier,
+        user_fee_tier.maker_bps,
+        user_fee_tier.taker_bps,
+        user_fee_tier.rebate_bps
+    );
 
+    let limit_price = impact_price.unwrap();
     let max_base_qty = size
         .mul(I80F48::from(
             10u64.pow(market.state.inner.config.decimals as u32),
         ))
         .to_num();
 
-    let max_quote_qty = max_base_qty * limit_price;
+    let mut max_quote_qty = max_base_qty * limit_price;
+    let max_quote_qty_without_fee = max_base_qty * limit_price;
+    let max_quote_qty =
+        (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
 
     println!(
-        "(debug) Price: {} | Size: {} | Notional: {}",
-        limit_price, max_base_qty, max_quote_qty
+        "(debug) Price: {} | Price (fp32): {} | Size: {} | Notional: {} | Fee: {}",
+        limit_price,
+        limit_price << 32,
+        max_base_qty,
+        max_quote_qty,
+        max_quote_qty - max_quote_qty_without_fee
     );
+
     println!(
         "Placing market {} order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         side.to_string(),
@@ -714,21 +749,29 @@ pub async fn process_perps_market_order(
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
-    let ixs = vec![new_perp_order(
-        &public_clearing,
-        &cache_account::id(),
-        &master_account,
-        &sub_account,
-        &market.address,
-        &orders_account,
-        &market.state.inner.orderbook,
-        &market.state.inner.event_queue,
-        &market.state.inner.bids,
-        &market.state.inner.asks,
-        &quote_pool_node,
-        &keypair.pubkey(),
-        args,
-    )];
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &master_account,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        new_perp_order(
+            &public_clearing,
+            &cache_account::id(),
+            &master_account,
+            &sub_account,
+            &market.address,
+            &orders_account,
+            &market.state.inner.orderbook,
+            &market.state.inner.event_queue,
+            &market.state.inner.bids,
+            &market.state.inner.asks,
+            &quote_pool_node,
+            &keypair.pubkey(),
+            args,
+        ),
+    ];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
         Ok(s) => s,
@@ -753,6 +796,15 @@ pub async fn process_perps_close(
     let keypair = config.keypair.as_ref().unwrap();
 
     let (public_clearing, _) = derive_public_clearing_address();
+
+    let clearing =
+        match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("Failed to load Clearing.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     let ctx = match CypherContext::load_perpetual_markets(rpc_client).await {
         Ok(ctx) => ctx,
@@ -807,7 +859,7 @@ pub async fn process_perps_close(
     // only fetch ob after making sure the position exists to minimze possible state changes
     let ob_ctx = match AgnosticOrderBookContext::load(
         rpc_client,
-        &market.state,
+        market.state.as_ref(),
         &market.address,
         &market.state.inner.bids,
         &market.state.inner.asks,
@@ -866,14 +918,29 @@ pub async fn process_perps_close(
             return Err(Box::new(CliError::ClientError(e)));
         }
     };
+
+    let user_fee_tier = clearing.get_fee_tier(user_ctx.account_ctx.state.fee_tier);
+    println!(
+        "(debug) User Fee Tier: {} | Maker: {} | Taker: {} | Rebate: {}",
+        user_fee_tier.tier,
+        user_fee_tier.maker_bps,
+        user_fee_tier.taker_bps,
+        user_fee_tier.rebate_bps
+    );
+
     let limit_price = impact_price.unwrap();
     let max_base_qty = position_size.abs().to_num::<u64>();
-    let mut max_quote_qty = max_base_qty * limit_price;
-    max_quote_qty += (max_quote_qty * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
+    let max_quote_qty_without_fee = max_base_qty * limit_price;
+    let max_quote_qty =
+        (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
 
     println!(
-        "(debug) Price: {} | Size: {} | Notional: {}",
-        limit_price, max_base_qty, max_quote_qty
+        "(debug) Price: {} | Price (fp32): {} | Size: {} | Notional: {} | Fee: {}",
+        limit_price,
+        limit_price << 32,
+        max_base_qty,
+        max_quote_qty,
+        max_quote_qty - max_quote_qty_without_fee
     );
     println!(
         "Closing Perp Position on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",

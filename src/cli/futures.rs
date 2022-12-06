@@ -4,7 +4,7 @@ use cypher_client::{
     constants::QUOTE_TOKEN_DECIMALS,
     instructions::{
         cancel_futures_order, create_orders_account as create_orders_account_ix, new_futures_order,
-        settle_futures_funds,
+        settle_futures_funds, update_account_margin as update_account_margin_ix,
     },
     utils::{
         convert_price_to_lots, derive_account_address, derive_orders_account_address,
@@ -12,12 +12,15 @@ use cypher_client::{
         derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
         native_to_ui, native_to_ui_price,
     },
-    CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount, SelfTradeBehavior,
-    Side,
+    CancelOrderArgs, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount,
+    SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, MarketContext, UserContext},
-    utils::{encode_string, get_cypher_program_account, get_program_accounts, send_transactions},
+    utils::{
+        encode_string, get_cypher_program_account, get_cypher_zero_copy_account,
+        get_program_accounts, send_transactions,
+    },
 };
 use fixed::types::I80F48;
 use solana_client::{
@@ -450,7 +453,7 @@ pub async fn list_futures_open_orders(
 
         let book = match AgnosticOrderBookContext::load(
             rpc_client,
-            &market.state,
+            market.state.as_ref(),
             &market.address,
             &market.state.inner.bids,
             &market.state.inner.asks,
@@ -622,6 +625,17 @@ pub async fn process_futures_market_order(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+        .await
+        .unwrap();
+
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
+
     let encoded_pool_name = encode_string("USDC");
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
@@ -644,7 +658,7 @@ pub async fn process_futures_market_order(
 
     let ob_ctx = match AgnosticOrderBookContext::load(
         rpc_client,
-        &market.state,
+        market.state.as_ref(),
         &market.address,
         &market.state.inner.bids,
         &market.state.inner.asks,
@@ -677,9 +691,16 @@ pub async fn process_futures_market_order(
         ))
         .to_num();
 
-    let max_quote_qty = max_base_qty * limit_price;
+    let max_quote_qty_without_fee = max_base_qty * limit_price;
+    let max_quote_qty = (max_quote_qty_without_fee * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
 
-    println!("{} - {} - {}", limit_price, max_base_qty, max_quote_qty);
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {} | Fee: {}",
+        limit_price,
+        max_base_qty,
+        max_quote_qty,
+        max_quote_qty - max_quote_qty_without_fee
+    );
     println!(
         "Placing market {} order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         side.to_string(),
@@ -707,22 +728,30 @@ pub async fn process_futures_market_order(
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
-    let ixs = vec![new_futures_order(
-        &public_clearing,
-        &cache_account::id(),
-        &master_account,
-        &sub_account,
-        &market.address,
-        &orders_account,
-        &market.state.inner.price_history,
-        &market.state.inner.orderbook,
-        &market.state.inner.event_queue,
-        &market.state.inner.bids,
-        &market.state.inner.asks,
-        &quote_pool_node,
-        &keypair.pubkey(),
-        args,
-    )];
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &master_account,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        new_futures_order(
+            &public_clearing,
+            &cache_account::id(),
+            &master_account,
+            &sub_account,
+            &market.address,
+            &orders_account,
+            &market.state.inner.price_history,
+            &market.state.inner.orderbook,
+            &market.state.inner.event_queue,
+            &market.state.inner.bids,
+            &market.state.inner.asks,
+            &quote_pool_node,
+            &keypair.pubkey(),
+            args,
+        ),
+    ];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
         Ok(s) => s,
@@ -801,7 +830,7 @@ pub async fn process_futures_close(
     // only fetch ob after making sure the position exists to minimze possible state changes
     let ob_ctx = match AgnosticOrderBookContext::load(
         rpc_client,
-        &market.state,
+        market.state.as_ref(),
         &market.address,
         &market.state.inner.bids,
         &market.state.inner.asks,
@@ -841,6 +870,17 @@ pub async fn process_futures_close(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+        .await
+        .unwrap();
+
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
+
     let encoded_pool_name = encode_string("USDC");
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
@@ -862,10 +902,16 @@ pub async fn process_futures_close(
     };
     let limit_price = impact_price.unwrap();
     let max_base_qty = position_size.abs().to_num::<u64>();
-    let mut max_quote_qty = max_base_qty * limit_price;
-    max_quote_qty += (max_quote_qty * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
+    let max_quote_qty_without_fee = max_base_qty * limit_price;
+    let max_quote_qty = (max_quote_qty_without_fee * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
 
-    println!("{} - {} - {}", limit_price, max_base_qty, max_quote_qty);
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {} | Fee: {}",
+        limit_price,
+        max_base_qty,
+        max_quote_qty,
+        max_quote_qty - max_quote_qty_without_fee
+    );
     println!(
         "Closing Futures Position on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
@@ -892,22 +938,30 @@ pub async fn process_futures_close(
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
-    let ixs = vec![new_futures_order(
-        &public_clearing,
-        &cache_account::id(),
-        &master_account,
-        &sub_account,
-        &market.address,
-        &orders_account,
-        &market.state.inner.price_history,
-        &market.state.inner.orderbook,
-        &market.state.inner.event_queue,
-        &market.state.inner.bids,
-        &market.state.inner.asks,
-        &quote_pool_node,
-        &keypair.pubkey(),
-        args,
-    )];
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &master_account,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        new_futures_order(
+            &public_clearing,
+            &cache_account::id(),
+            &master_account,
+            &sub_account,
+            &market.address,
+            &orders_account,
+            &market.state.inner.price_history,
+            &market.state.inner.orderbook,
+            &market.state.inner.event_queue,
+            &market.state.inner.bids,
+            &market.state.inner.asks,
+            &quote_pool_node,
+            &keypair.pubkey(),
+            args,
+        ),
+    ];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
         Ok(s) => s,
