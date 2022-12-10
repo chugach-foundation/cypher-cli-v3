@@ -59,6 +59,7 @@ pub enum PerpetualsSubCommand {
         side: Side,
         size: I80F48,
         price: I80F48,
+        order_type: String,
     },
 }
 
@@ -147,6 +148,12 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .long("price")
                                 .takes_value(true)
                                 .help("The price of the order, value should be in quote token, non-native units.")
+                        )
+                        .arg(
+                            Arg::with_name("order-type")
+                                .long("order-type")
+                                .takes_value(true)
+                                .help("The order type, must be one of \"limit\" or \"postOnly\".")
                         ),
                 )
                 .subcommand(
@@ -381,11 +388,21 @@ pub fn parse_perps_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn e
                     )));
                 }
             };
+            let order_type = match matches.value_of("order-type") {
+                Some(s) => s.to_string(),
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Order type not provided. Must be one of \"limit\" or \"postOnly\"."
+                            .to_string(),
+                    )));
+                }
+            };
             Ok(CliCommand::Perpetuals(PerpetualsSubCommand::Place {
                 symbol: symbol.to_string(),
                 side,
                 size,
                 price,
+                order_type,
             }))
         }
         ("", None) => {
@@ -436,7 +453,7 @@ pub async fn list_perps_open_orders(
     let markets = ctx.perp_markets.read().await;
 
     println!(
-        "\n| {:^10} | {:^35} | {:^4} | {:^15} | {:^15} | {:^15} |",
+        "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
         "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
     );
 
@@ -481,7 +498,7 @@ pub async fn list_perps_open_orders(
             if book_order.is_some() {
                 let bo = book_order.unwrap();
                 println!(
-                    "| {:^10} | {:^35} | {:<4} | {:>15} | {:>15} | {:>15} |",
+                    "| {:^10} | {:^45} | {:<4} | {:>15.2} | {:>15.2} | {:>15.6} |",
                     market_name,
                     order.order_id,
                     order.side.to_string(),
@@ -744,7 +761,7 @@ pub async fn process_perps_market_order(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -963,7 +980,7 @@ pub async fn process_perps_close(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -1005,11 +1022,21 @@ pub async fn process_perps_limit_order(
     side: Side,
     size: I80F48,
     price: I80F48,
+    order_type: &str,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
     let (public_clearing, _) = derive_public_clearing_address();
+
+    let clearing =
+        match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("Failed to load Clearing.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     let ctx = match CypherContext::load_perpetual_markets(rpc_client).await {
         Ok(ctx) => ctx,
@@ -1033,6 +1060,12 @@ pub async fn process_perps_limit_order(
         .unwrap()
         .trim_matches(char::from(0));
 
+    let order_type = if order_type == "limit" {
+        DerivativeOrderType::Limit
+    } else {
+        DerivativeOrderType::PostOnly
+    };
+
     let limit_price = convert_price_to_lots(
         price
             .mul(I80F48::from(10u64.pow(QUOTE_TOKEN_DECIMALS as u32)))
@@ -1041,13 +1074,6 @@ pub async fn process_perps_limit_order(
         10u64.pow(market.state.inner.config.decimals as u32),
         market.state.inner.quote_multiplier,
     );
-
-    let max_base_qty = size
-        .mul(I80F48::from(
-            10u64.pow(market.state.inner.config.decimals as u32),
-        ))
-        .to_num();
-    let max_quote_qty = max_base_qty * limit_price;
 
     let (master_account, _) = derive_account_address(&keypair.pubkey(), 0); // TODO: change this, allow multiple accounts
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
@@ -1084,6 +1110,27 @@ pub async fn process_perps_limit_order(
         }
     };
 
+    let user_fee_tier = clearing.get_fee_tier(account.fee_tier);
+    println!(
+        "(debug) User Fee Tier: {} | Maker: {} | Taker: {} | Rebate: {}",
+        user_fee_tier.tier,
+        user_fee_tier.maker_bps,
+        user_fee_tier.taker_bps,
+        user_fee_tier.rebate_bps
+    );
+
+    let max_base_qty = size
+        .mul(I80F48::from(
+            10u64.pow(market.state.inner.config.decimals as u32),
+        ))
+        .to_num();
+    let max_quote_qty = if order_type == DerivativeOrderType::PostOnly {
+        max_base_qty * limit_price
+    } else {
+        let max_quote_qty_without_fee = max_base_qty * limit_price;
+        (max_quote_qty_without_fee * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+    };
+
     println!(
         "(debug) Price: {} | Size: {} | Notional: {}",
         limit_price, max_base_qty, max_quote_qty
@@ -1108,8 +1155,8 @@ pub async fn process_perps_limit_order(
         limit_price,
         max_base_qty,
         max_quote_qty,
-        order_type: DerivativeOrderType::PostOnly,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
+        order_type,
+        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,

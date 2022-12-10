@@ -435,7 +435,7 @@ pub async fn list_futures_open_orders(
     let markets = ctx.futures_markets.read().await;
 
     println!(
-        "\n| {:^10} | {:^35} | {:^4} | {:^15} | {:^15} | {:^15} |",
+        "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
         "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
     );
 
@@ -480,7 +480,7 @@ pub async fn list_futures_open_orders(
             if book_order.is_some() {
                 let bo = book_order.unwrap();
                 println!(
-                    "| {:^10} | {:^35} | {:<4} | {:>15} | {:>15} | {:>15} |",
+                    "| {:^10} | {:^45} | {:<4} | {:>15.2} | {:>15.2} | {:>15.6} |",
                     market_name,
                     order.order_id,
                     order.side.to_string(),

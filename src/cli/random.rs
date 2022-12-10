@@ -5,10 +5,7 @@ use solana_sdk::{signature::Keypair, signer::Signer};
 use std::{error, fs::File, io::Write, str::FromStr, sync::Arc};
 use tokio::sync::broadcast::channel;
 
-use crate::{
-    cli::CliError,
-    market_maker::{config::Config, runner::Runner},
-};
+use crate::cli::CliError;
 
 use super::{command::CliCommand, CliConfig, CliResult};
 

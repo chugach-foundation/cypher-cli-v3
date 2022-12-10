@@ -1,3 +1,20 @@
 {
-    
+    "accountNumber": 0,
+    "subAccountNumber": 0,
+    "makerConfig": {
+        "maxQuote": 10,
+        "spread": 25,
+        "layers": 5,
+        "spacingBps": 5,
+        "stepAmount": 25,
+        "symbol": "SOL-PERP"
+    },
+    "inventoryConfig": {
+        "expBase": 2,
+        "shapeNumerator": 1,
+        "shapeDenominator": 100000
+    },
+    "hedgerConfig": {
+        "symbol": "SOL1!"
+    }
 }

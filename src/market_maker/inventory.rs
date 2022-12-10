@@ -8,24 +8,13 @@ use {
 
 use super::constants::BPS_UNIT;
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InventoryManagerConfig {
-    pub initial_capital: u64,
-    pub exp_base: i64,
-    pub max_quote: i64,
-    pub shape_num: u32,
-    pub shape_denom: u32,
-    pub spread: u8,
-}
-
 pub struct InventoryManager {
     decimals: u8,
-    exp_base: i64,
-    max_quote: i64,
-    shape_num: u32,
-    shape_denom: u32,
-    spread: u8,
+    exp_base: u32,
+    max_quote: I80F48,
+    shape_num: I80F48,
+    shape_denom: I80F48,
+    spread: I80F48,
 }
 
 #[derive(Debug, Default)]
@@ -39,21 +28,21 @@ impl InventoryManager {
     pub fn default() -> Self {
         Self {
             decimals: u8::default(),
-            exp_base: i64::default(),
-            max_quote: i64::default(),
-            shape_num: u32::default(),
-            shape_denom: u32::default(),
-            spread: u8::default(),
+            exp_base: u32::default(),
+            max_quote: I80F48::ZERO,
+            shape_num: I80F48::default(),
+            shape_denom: I80F48::default(),
+            spread: I80F48::ONE,
         }
     }
 
     pub fn new(
         decimals: u8,
-        exp_base: i64,
-        max_quote: i64,
-        shape_num: u32,
-        shape_denom: u32,
-        spread: u8,
+        exp_base: u32,
+        max_quote: I80F48,
+        shape_num: I80F48,
+        shape_denom: I80F48,
+        spread: I80F48,
     ) -> Self {
         Self {
             decimals,
@@ -133,19 +122,21 @@ impl InventoryManager {
     // }
 
     #[inline(always)]
-    fn adj_quote_size(&self, abs_delta: u32) -> i128 {
-        let shaped_delta = self.shape_num * abs_delta;
-        let divided_shaped_delta = shaped_delta / self.shape_denom;
-        let divisor: i128 = self.exp_base.pow(divided_shaped_delta).into();
-        self.max_quote as i128 / divisor
+    fn adj_quote_size(&self, abs_delta: I80F48) -> I80F48 {
+        let shaped_delta = self.shape_num.checked_mul(abs_delta).unwrap();
+        let divided_shaped_delta = shaped_delta
+            .checked_div(self.shape_denom)
+            .unwrap()
+            .to_num::<u32>();
+        let divisor = I80F48::from(self.exp_base.pow(divided_shaped_delta));
+        self.max_quote.checked_div(divisor).unwrap()
     }
 
     #[inline(always)]
-    pub fn get_spread(&self, oracle_price: u64) -> (u64, u64) {
-        let num = (BPS_UNIT + self.spread as u64) as f64 / BPS_UNIT as f64;
-        let best_ask = oracle_price as f64 * num;
-        let best_bid = oracle_price as f64 / num;
+    pub fn get_spread(&self, oracle_price: I80F48) -> (I80F48, I80F48) {
+        let best_ask = oracle_price.checked_mul(self.spread).unwrap();
+        let best_bid = oracle_price.checked_div(self.spread).unwrap();
 
-        (best_bid as u64, best_ask as u64)
+        (best_bid, best_ask)
     }
 }

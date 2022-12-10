@@ -1,0 +1,52 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'cypher-cli'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=cypher-cli",
+                    "--package=cypher-cli"
+                ],
+                "filter": {
+                    "name": "cypher-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [
+                "-u",
+                "devnet",
+                "-k",
+                "./data/regular2.json",
+                "perps",
+                "orders"
+            ],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'cypher-cli'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=cypher-cli",
+                    "--package=cypher-cli"
+                ],
+                "filter": {
+                    "name": "cypher-cli",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

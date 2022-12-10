@@ -1024,7 +1024,7 @@ name = "cypher-cli"
 version = "0.1.0"
 dependencies = [
  "agnostic-orderbook",
- "anchor-client",
+ "anchor-lang",
  "anchor-spl",
  "async-trait",
  "chrono",
@@ -1036,6 +1036,7 @@ dependencies = [
  "futures",
  "futures-core",
  "futures-util",
+ "hex",
  "log",
  "serde",
  "serde_json",

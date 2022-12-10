@@ -1,16 +1,8 @@
-use thiserror::Error;
-
 pub mod config;
-mod constants;
-mod context;
-mod executor;
-mod hedging;
-mod inventory;
-mod making;
-pub mod runner;
-
-#[derive(Debug, Error)]
-pub enum Error {
-    #[error("Default error.")]
-    Default,
-}
+pub mod constants;
+pub mod error;
+pub mod hedging;
+pub mod inventory;
+pub mod making;
+pub mod orders;
+pub mod strategies;

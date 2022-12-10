@@ -243,7 +243,18 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
                 side,
                 size,
                 price,
-            } => process_perps_limit_order(config, symbol.as_str(), *side, *size, *price).await,
+                order_type,
+            } => {
+                process_perps_limit_order(
+                    config,
+                    symbol.as_str(),
+                    *side,
+                    *size,
+                    *price,
+                    order_type.as_str(),
+                )
+                .await
+            }
         },
         CliCommand::Spot(spot_command) => match spot_command {
             SpotSubCommand::Orders => list_spot_open_orders(config).await,

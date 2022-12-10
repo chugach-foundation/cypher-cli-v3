@@ -1,6 +1,7 @@
 use {
     self::command::CliCommand,
-    cypher_utils::utils::KeypairError,
+    crate::market_maker::error::Error as MarketMakerError,
+    cypher_utils::{contexts::ContextError, utils::KeypairError},
     solana_client::{
         client_error::ClientError,
         nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient},
@@ -25,7 +26,6 @@ pub mod spot;
 pub mod sub_account;
 
 pub use app::*;
-use cypher_utils::contexts::ContextError;
 
 /// The config of the CLI.
 /// This structure holds all necessary information to process and execute a command.
@@ -66,4 +66,6 @@ pub enum CliError {
     CommandNotRecognized(String),
     #[error("Keypair error: {:?}", self)]
     KeypairError(KeypairError),
+    #[error("Market maker error: {:?}", self)]
+    MarketMaker(MarketMakerError),
 }
