@@ -697,8 +697,13 @@ pub async fn process_perps_market_order(
             return Err(Box::new(CliError::ContextError(e)));
         }
     };
+    let max_base_qty = size
+        .mul(I80F48::from(
+            10u64.pow(market.state.inner.config.decimals as u32),
+        ))
+        .to_num();
 
-    let impact_price = ob_ctx.get_impact_price(size.abs().to_num(), side);
+    let impact_price = ob_ctx.get_impact_price(max_base_qty, side);
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(
             format!(
@@ -719,11 +724,6 @@ pub async fn process_perps_market_order(
     );
 
     let limit_price = impact_price.unwrap();
-    let max_base_qty = size
-        .mul(I80F48::from(
-            10u64.pow(market.state.inner.config.decimals as u32),
-        ))
-        .to_num();
 
     let mut max_quote_qty = max_base_qty * limit_price;
     let max_quote_qty_without_fee = max_base_qty * limit_price;
