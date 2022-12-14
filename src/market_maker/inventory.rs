@@ -1,30 +1,33 @@
+use log::warn;
+use std::any::type_name;
 use {
     cypher_client::CypherSubAccount,
     fixed::types::I80F48,
     log::info,
     serde::{Deserialize, Serialize},
+    solana_sdk::pubkey::Pubkey,
     std::sync::Arc,
+};
+
+use crate::common::{
+    context::GlobalContext,
+    inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
 };
 
 use super::constants::BPS_UNIT;
 
-pub struct InventoryManager {
+pub struct ShapeFunctionInventoryManager {
     decimals: u8,
     exp_base: u32,
     max_quote: I80F48,
     shape_num: I80F48,
     shape_denom: I80F48,
     spread: I80F48,
+    market_identifier: Pubkey,
+    is_derivative: bool,
 }
 
-#[derive(Debug, Default)]
-pub struct QuoteVolumes {
-    pub delta: i64,
-    pub bid_size: i128,
-    pub ask_size: i128,
-}
-
-impl InventoryManager {
+impl ShapeFunctionInventoryManager {
     pub fn default() -> Self {
         Self {
             decimals: u8::default(),
@@ -33,10 +36,14 @@ impl InventoryManager {
             shape_num: I80F48::default(),
             shape_denom: I80F48::default(),
             spread: I80F48::ONE,
+            market_identifier: Pubkey::default(),
+            is_derivative: false,
         }
     }
 
     pub fn new(
+        market_identifier: Pubkey,
+        is_derivative: bool,
         decimals: u8,
         exp_base: u32,
         max_quote: I80F48,
@@ -45,6 +52,8 @@ impl InventoryManager {
         spread: I80F48,
     ) -> Self {
         Self {
+            market_identifier,
+            is_derivative,
             decimals,
             exp_base,
             max_quote,
@@ -53,77 +62,38 @@ impl InventoryManager {
             spread,
         }
     }
+}
 
-    // #[inline(always)]
-    // pub async fn get_quote_volumes(
-    //     &self,
-    //     user: &CypherUser,
-    // ) -> QuoteVolumes {
-    //     let current_delta = self.get_user_delta(sub_account);
+impl InventoryManager for ShapeFunctionInventoryManager {
+    type Input = GlobalContext;
 
-    //     let adjusted_vol = self.adj_quote_size(current_delta.abs().try_into().unwrap());
-    //     let (bid_size, ask_size) = if current_delta < 0 {
-    //         (self.max_quote as i128, adjusted_vol)
-    //     } else {
-    //         (adjusted_vol, self.max_quote as i128)
-    //     };
-    //     QuoteVolumes {
-    //         delta: current_delta,
-    //         bid_size,
-    //         ask_size,
-    //     }
-    // }
+    fn get_delta(&self, ctx: &GlobalContext) -> I80F48 {
+        let user_ctx = &ctx.user;
+        let sub_account_ctx = user_ctx.sub_account_ctxs.first(); // might need rework
+        let sub_account = match sub_account_ctx {
+            Some(a) => a,
+            None => return I80F48::ZERO,
+        };
 
-    // #[inline(always)]
-    // fn get_user_delta(
-    //     &self,
-    //     sub_account: &CypherSubAccount,
-    // ) -> i64 {
-    //     let maybe_pos = sub_account.get(self.market_idx);
+        let position = sub_account.get_position(&self.market_identifier);
+        let delta = match position {
+            Some(pos) => {
+                if self.is_derivative {
+                    pos.derivative.total_position()
+                } else {
+                    pos.spot.position()
+                }
+            }
+            None => I80F48::ZERO,
+        };
 
-    //     let user_pos = match maybe_pos {
-    //         Some(position) => position,
-    //         None => {
-    //             return 0;
-    //         }
-    //     };
+        info!("{} - Current delta: {}", type_name::<Self>(), delta);
 
-    //     info!(
-    //         "[INVMGR] Position: {}.",
-    //         user_pos.base_borrows(),
-    //     );
-    //     let quote_divisor = I80F48::from_num::<u64>(10_u64.checked_pow(6).unwrap());
-    //     let token_divisor = I80F48::from_num::<u64>(10_u64.checked_pow(self.decimals as u32).unwrap());
+        delta
+    }
 
-    //     let long_pos = user_pos.base_deposits().as_u64(0) as i64 / c_asset_divisor as i64;
-    //     let delta = long_pos as i64 - short_pos as i64;
-
-    //     info!(
-    //         "[INVMGR] Open Orders Coin Free: {}. Open Orders Coin Total: {}.",
-    //         user_pos.oo_info.coin_free, user_pos.oo_info.coin_total,
-    //     );
-
-    //     info!(
-    //         "[INVMGR] Open Orders Price Coin Free: {}. Open Orders Price Coin Total: {}.",
-    //         user_pos.oo_info.pc_free, user_pos.oo_info.pc_total,
-    //     );
-
-    //     let assets_val = sub_account.get_assets_value();
-    //     let assets_val_ui = assets_val / quote_divisor;
-    //     let liabs_val = sub_account.get_liabilities_value();
-    //     let liabs_val_ui = liabs_val / quote_divisor;
-
-    //     info!(
-    //         "[INVMGR] Assets value: {} - Liabilities value: {} ",
-    //         assets_val_ui, liabs_val_ui
-    //     );
-
-    //     delta
-    // }
-
-    #[inline(always)]
-    fn adj_quote_size(&self, abs_delta: I80F48) -> I80F48 {
-        let shaped_delta = self.shape_num.checked_mul(abs_delta).unwrap();
+    fn get_quote_size(&self, absolute_delta: I80F48) -> I80F48 {
+        let shaped_delta = self.shape_num.checked_mul(absolute_delta).unwrap();
         let divided_shaped_delta = shaped_delta
             .checked_div(self.shape_denom)
             .unwrap()
@@ -132,11 +102,30 @@ impl InventoryManager {
         self.max_quote.checked_div(divisor).unwrap()
     }
 
-    #[inline(always)]
-    pub fn get_spread(&self, oracle_price: I80F48) -> (I80F48, I80F48) {
-        let best_ask = oracle_price.checked_mul(self.spread).unwrap();
-        let best_bid = oracle_price.checked_div(self.spread).unwrap();
+    fn get_quote_volumes(&self, ctx: &GlobalContext) -> QuoteVolumes {
+        let current_delta = self.get_delta(ctx);
 
-        (best_bid, best_ask)
+        let adjusted_vol = self.get_quote_size(current_delta.abs());
+        let (bid_size, ask_size) = if current_delta < I80F48::ZERO {
+            (self.max_quote, adjusted_vol)
+        } else {
+            (adjusted_vol, self.max_quote)
+        };
+        QuoteVolumes {
+            delta: current_delta,
+            bid_size,
+            ask_size,
+        }
+    }
+
+    fn get_spread(&self, oracle_price: I80F48) -> SpreadInfo {
+        let ask = oracle_price.checked_mul(self.spread).unwrap();
+        let bid = oracle_price.checked_div(self.spread).unwrap();
+
+        SpreadInfo {
+            oracle_price,
+            bid,
+            ask,
+        }
     }
 }

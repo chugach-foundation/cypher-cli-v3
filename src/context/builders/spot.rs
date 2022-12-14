@@ -10,7 +10,7 @@ use cypher_utils::{
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::sync::Arc;
+use std::{any::type_name, sync::Arc};
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -24,8 +24,10 @@ use crate::common::context::{
 /// The context state used for a spot market operation.
 #[derive(Default)]
 pub struct SpotContextState {
-    /// The pool context.
-    pub pool: PoolContext,
+    /// The asset pool context.
+    pub asset_pool: PoolContext,
+    /// The quote pool context.
+    pub quote_pool: PoolContext,
     /// The Serum event queue context.
     pub event_queue: SerumEventQueueContext,
     /// The Serum orderbook context.
@@ -35,38 +37,43 @@ pub struct SpotContextState {
 }
 
 impl SpotContextState {
-    fn update_pool(&mut self, market: &Pubkey, data: &[u8]) -> Result<(), ContextError> {
-        self.pool = match PoolContext::from_account_data(data, market) {
-            Ok(p) => p,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-        Ok(())
+    fn update_asset_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+        self.asset_pool.reload_from_account_data(data);
     }
 
-    fn update_event_queue(
+    fn update_asset_pool_node(&mut self, pool_node: &Pubkey, data: &[u8]) {
+        self.asset_pool
+            .reload_pool_node_from_account_data(pool_node, data);
+    }
+
+    fn update_quote_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+        self.quote_pool.reload_from_account_data(data);
+    }
+
+    fn update_quote_pool_node(&mut self, pool_node: &Pubkey, data: &[u8]) {
+        self.quote_pool
+            .reload_pool_node_from_account_data(pool_node, data);
+    }
+
+    fn update_event_queue(&mut self, market: &Pubkey, event_queue: &Pubkey, data: &[u8]) {
+        self.event_queue.reload_from_account_data(data);
+    }
+
+    fn update_orderbook(
         &mut self,
         market: &Pubkey,
-        event_queue: &Pubkey,
+        bids: &Pubkey,
+        asks: &Pubkey,
+        market_state: &MarketState,
         data: &[u8],
-    ) -> Result<(), ContextError> {
-        self.event_queue =
-            match SerumEventQueueContext::from_account_data(market, event_queue, data) {
-                Ok(eq) => eq,
-                Err(e) => return Err(e),
-            };
-        Ok(())
-    }
-
-    async fn update_orderbook(&mut self, market_state: &MarketState, data: &[u8], side: Side) {
+        side: Side,
+    ) {
         self.orderbook
-            .reload_from_account_data(market_state, data, side)
-            .await
+            .reload_from_account_data(market_state, data, side);
     }
 
-    async fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
-        self.open_orders.reload_from_account_data(data).await;
+    fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
+        self.open_orders.reload_from_account_data(data);
     }
 }
 
@@ -81,8 +88,13 @@ pub struct SpotContextBuilder {
     bids: Pubkey,
     asks: Pubkey,
     open_orders: Pubkey,
+    asset_pool: Pubkey,
+    asset_pool_nodes: Vec<Pubkey>,
+    quote_pool: Pubkey,
+    quote_pool_nodes: Vec<Pubkey>,
     state: RwLock<SpotContextState>,
     update_sender: Arc<Sender<OperationContext>>,
+    shutdown_sender: Arc<Sender<bool>>,
     symbol: String,
 }
 
@@ -90,24 +102,34 @@ impl SpotContextBuilder {
     /// Creates a new [`SpotContextBuilder`].
     pub fn new(
         accounts_cache: Arc<AccountsCache>,
+        shutdown_sender: Arc<Sender<bool>>,
         market_state: MarketState,
         market: Pubkey,
         event_queue: Pubkey,
         bids: Pubkey,
         asks: Pubkey,
         open_orders: Pubkey,
+        asset_pool: Pubkey,
+        asset_pool_nodes: Vec<Pubkey>,
+        quote_pool: Pubkey,
+        quote_pool_nodes: Vec<Pubkey>,
         symbol: String,
     ) -> Self {
         Self {
             accounts_cache,
+            shutdown_sender,
             market_state,
             market,
             event_queue,
             bids,
             asks,
             open_orders,
+            asset_pool,
+            asset_pool_nodes,
+            quote_pool,
+            quote_pool_nodes,
             state: RwLock::new(SpotContextState::default()),
-            update_sender: Arc::new(channel::<OperationContext>(1).0),
+            update_sender: Arc::new(channel::<OperationContext>(50).0),
             symbol,
         }
     }
@@ -117,99 +139,130 @@ impl SpotContextBuilder {
 impl ContextBuilder for SpotContextBuilder {
     type Output = OperationContext;
 
-    async fn start(&self) -> Result<(), ContextBuilderError> {
-        let mut sub = self.accounts_cache.subscribe();
-
-        loop {
-            tokio::select! {
-                account_state_update = sub.recv() => {
-                    if account_state_update.is_err() {
-                        warn!("[SPOTCTX-BLDR] There was an error receiving account state update.");
-                        continue;
-                    } else {
-                        let account_state = account_state_update.unwrap();
-                        match self.process_update(&account_state).await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[SPOTCTX-BLDR] An error occurred while processing account update: {:?}", e);
-                            }
-                        };
-                        match self.send().await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[SPOTCTX-BLDR] There was an error sending operation context update: {:?}", e.to_string());
-                            }
-                        };
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    fn cache_receiver(&self) -> Receiver<AccountState> {
+        self.accounts_cache.subscribe()
     }
 
-    /// Returns the process update of this [`SpotContextBuilder`].
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
+    }
+
     async fn process_update(
         &self,
         account_state: &AccountState,
     ) -> Result<(), ContextBuilderError> {
-        // check if this account is the market
-        if account_state.account == self.market {
+        // check if this account is the asset pool for this market
+        if account_state.account == self.asset_pool {
             let mut state = self.state.write().await;
-            match state.update_pool(&self.market, &account_state.data) {
-                Ok(()) => {
-                    info!("[SPOTCTX-BLDR] Sucessfully processed spot pool account update.");
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "pool account".to_string(),
-                    ))
-                }
-            }
+            state.update_asset_pool(&self.asset_pool, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed asset pool account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
+        }
+
+        // check if it is one of the asset pool nodes
+        if self.asset_pool_nodes.contains(&account_state.account) {
+            let mut state = self.state.write().await;
+            state.update_asset_pool_node(&account_state.account, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed asset pool node account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
+        }
+
+        // check if this account is the quote pool for this market
+        if account_state.account == self.quote_pool {
+            let mut state = self.state.write().await;
+            state.update_quote_pool(&self.quote_pool, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed quote pool account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
+        }
+
+        // check if it is one of the quote pool nodes
+        if self.quote_pool_nodes.contains(&account_state.account) {
+            let mut state = self.state.write().await;
+            state.update_quote_pool_node(&account_state.account, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed quote pool node account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the event queue
         if account_state.account == self.event_queue {
             let mut state = self.state.write().await;
-            match state.update_event_queue(&self.market, &self.event_queue, &account_state.data) {
-                Ok(()) => {
-                    info!("[SPOTCTX-BLDR] Sucessfully processed spot market event queue account update.");
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "event queue".to_string(),
-                    ))
-                }
-            }
+            state.update_event_queue(&self.market, &self.event_queue, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed spot market event queue account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the bid side of the book
         if account_state.account == self.bids {
             let mut state = self.state.write().await;
-            state
-                .update_orderbook(&self.market_state, &account_state.data, Side::Bid)
-                .await;
-            info!("[SPOTCTX-BLDR] Sucessfully processed spot market bids account update.");
+            state.update_orderbook(
+                &self.market,
+                &self.bids,
+                &self.asks,
+                &self.market_state,
+                &account_state.data,
+                Side::Bid,
+            );
+            info!(
+                "{} - [{}] Sucessfully processed spot market bids account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the ask side of the book
         if account_state.account == self.asks {
             let mut state = self.state.write().await;
-            state
-                .update_orderbook(&self.market_state, &account_state.data, Side::Ask)
-                .await;
-            info!("[SPOTCTX-BLDR] Sucessfully processed spot market asks account update.");
+            state.update_orderbook(
+                &self.market,
+                &self.bids,
+                &self.asks,
+                &self.market_state,
+                &account_state.data,
+                Side::Ask,
+            );
+            info!(
+                "{} - [{}] Sucessfully processed spot market asks account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the open orders
         if account_state.account == self.open_orders {
             let mut state = self.state.write().await;
-            state
-                .update_open_orders(&self.open_orders, &account_state.data)
-                .await;
-            info!("[SPOTCTX-BLDR] Sucessfully processed spot market open orders account update.");
+            state.update_open_orders(&self.open_orders, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed spot market open orders account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
-        Ok(())
+        Err(ContextBuilderError::UnrecognizedAccount(
+            account_state.account,
+        ))
     }
 
     async fn send(&self) -> Result<(), ContextBuilderError> {
@@ -222,11 +275,15 @@ impl ContextBuilder for SpotContextBuilder {
         }
     }
 
+    fn sender(&self) -> Arc<Sender<OperationContext>> {
+        self.update_sender.clone()
+    }
+
     fn subscribe(&self) -> Receiver<OperationContext> {
         self.update_sender.subscribe()
     }
 
-    fn symbol(&self) -> String {
-        self.symbol.to_string()
+    fn symbol(&self) -> &str {
+        self.symbol.as_str()
     }
 }

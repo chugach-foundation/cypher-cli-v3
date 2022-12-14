@@ -1,5 +1,5 @@
 use log::{info, warn};
-use std::{error, sync::Arc};
+use std::{any::type_name, error, sync::Arc};
 use thiserror::Error;
 use tokio::{
     sync::broadcast::Sender,
@@ -8,6 +8,7 @@ use tokio::{
 
 use super::{
     context::manager::ContextManager,
+    orders::OrderManager,
     strategy::{Strategy, StrategyError},
 };
 
@@ -22,23 +23,44 @@ pub enum ExecutionCondition {
     EventBased,
 }
 
-pub struct RunnerOptions {
+pub struct RunnerOptions<CMO, CMGCI, CMOCI, OMO, CMOII> {
     pub name: String,
     pub shutdown: Arc<Sender<bool>>,
     pub execution_condition: ExecutionCondition,
-    pub strategy: Arc<dyn Strategy>,
-    pub context_manager: Arc<dyn ContextManager>,
+    pub strategy: Arc<dyn Strategy<Input = CMO, Output = OMO>>,
+    pub context_manager: Arc<
+        dyn ContextManager<
+            Output = CMO,
+            GlobalContextInput = CMGCI,
+            OperationContextInput = CMOCI,
+            OracleInfoInput = CMOII,
+        >,
+    >,
 }
 
-pub struct Runner {
+pub struct Runner<CMO, CMGCI, CMOCI, OMO, CMOII> {
     name: String,
     shutdown: Arc<Sender<bool>>,
     execution_condition: ExecutionCondition,
-    strategy: Arc<dyn Strategy>,
-    context_manager: Arc<dyn ContextManager>,
+    strategy: Arc<dyn Strategy<Input = CMO, Output = OMO>>,
+    context_manager: Arc<
+        dyn ContextManager<
+            Output = CMO,
+            GlobalContextInput = CMGCI,
+            OperationContextInput = CMOCI,
+            OracleInfoInput = CMOII,
+        >,
+    >,
 }
 
-impl Runner {
+impl<CMO, CMGCI, CMOCI, OMO, CMOII> Runner<CMO, CMGCI, CMOCI, OMO, CMOII>
+where
+    CMO: Clone + Send + Sync,
+    CMGCI: Clone + Send + Sync,
+    CMOCI: Clone + Send + Sync,
+    OMO: Clone + Send + Sync,
+    CMOII: Clone + Send + Sync,
+{
     pub fn new(
         RunnerOptions {
             name,
@@ -46,7 +68,7 @@ impl Runner {
             execution_condition,
             strategy,
             context_manager,
-        }: RunnerOptions,
+        }: RunnerOptions<CMO, CMGCI, CMOCI, OMO, CMOII>,
     ) -> Self {
         Self {
             name,
@@ -58,7 +80,11 @@ impl Runner {
     }
 
     pub async fn run(&self) -> Result<(), RunnerError> {
-        info!("[RUNNER-{}] Starting runner..", self.name);
+        info!(
+            "{} - [{}] Starting runner..",
+            type_name::<Self>(),
+            self.name
+        );
 
         let res = match &self.execution_condition {
             ExecutionCondition::Interval { interval } => self.execute_on_interval(*interval).await,
@@ -85,7 +111,7 @@ impl Runner {
 
                         },
                         Err(e) => {
-                            info!("[RUNNER-{}] An error occurred while executing strategy: {:?}.", self.name, e);
+                            info!("{} - [{}] An error occurred while executing strategy: {:?}.", type_name::<Self>(), self.name, e);
                         }
                     }
                 }
@@ -94,7 +120,11 @@ impl Runner {
                 }
             }
             if shutdown_signal {
-                info!("[RUNNER-{}] Received shutdown signal, stopping.", self.name);
+                info!(
+                    "{} - [{}] Received shutdown signal, stopping.",
+                    type_name::<Self>(),
+                    self.name
+                );
                 break;
             }
         }
@@ -117,12 +147,12 @@ impl Runner {
 
                                 },
                                 Err(e) => {
-                                    info!("[RUNNER-{}] An error occurred while executing strategy: {:?}.", self.name, e);
+                                    info!("{} - [{}] An error occurred while executing strategy: {:?}.", type_name::<Self>(), self.name, e);
                                 }
                             }
                         },
                         Err(e) => {
-                            warn!("[RUNNER-{}] There was an error receiving message from context manager: {:?}", self.name, e);
+                            warn!("{} - [{}] There was an error receiving message from context manager: {:?}", type_name::<Self>(), self.name, e);
                         },
                     }
                 }
@@ -131,7 +161,11 @@ impl Runner {
                 }
             }
             if shutdown_signal {
-                info!("[RUNNER-{}] Received shutdown signal, stopping.", self.name);
+                info!(
+                    "{} - [{}] Received shutdown signal, stopping.",
+                    type_name::<Self>(),
+                    self.name
+                );
                 break;
             }
         }

@@ -1,15 +1,21 @@
 use async_trait::async_trait;
+use fixed::types::I80F48;
 use log::{info, warn};
-use std::sync::Arc;
+use solana_sdk::pubkey::Pubkey;
+use std::{any::type_name, sync::Arc};
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
-    RwLock,
+    RwLock, RwLockWriteGuard,
 };
 
-use crate::common::context::{
-    builder::ContextBuilder,
-    manager::{ContextManager, ContextManagerError},
-    ExecutionContext, GlobalContext, OperationContext,
+use crate::common::{
+    context::{
+        builder::ContextBuilder,
+        manager::{ContextManager, ContextManagerError},
+        ExecutionContext, GlobalContext, OperationContext,
+    },
+    oracle::{OracleInfo, OracleProvider},
+    orders::{ManagedOrder, OrderManager},
 };
 
 use super::builders::global::GlobalContextBuilder;
@@ -17,24 +23,32 @@ use super::builders::global::GlobalContextBuilder;
 pub struct CypherExecutionContextManager {
     global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,
     operation_context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send>,
+    oracle_provider: Arc<dyn OracleProvider<Input = GlobalContext> + Send>,
     global_context: RwLock<GlobalContext>,
     operation_context: RwLock<OperationContext>,
+    oracle_info: RwLock<OracleInfo>,
     update_sender: Arc<Sender<ExecutionContext>>,
+    shutdown_sender: Arc<Sender<bool>>,
     symbol: String,
 }
 
 impl CypherExecutionContextManager {
     pub fn new(
+        shutdown_sender: Arc<Sender<bool>>,
         global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,
         operation_context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send>,
+        oracle_provider: Arc<dyn OracleProvider<Input = GlobalContext> + Send>,
     ) -> Self {
-        let symbol = operation_context_builder.symbol();
+        let symbol = operation_context_builder.symbol().to_string();
         Self {
             global_context_builder,
             operation_context_builder,
+            oracle_provider,
             global_context: RwLock::new(GlobalContext::default()),
             operation_context: RwLock::new(OperationContext::default()),
-            update_sender: Arc::new(channel::<ExecutionContext>(1).0),
+            oracle_info: RwLock::new(OracleInfo::default()),
+            update_sender: Arc::new(channel::<ExecutionContext>(50).0),
+            shutdown_sender,
             symbol,
         }
     }
@@ -42,66 +56,71 @@ impl CypherExecutionContextManager {
 
 #[async_trait]
 impl ContextManager for CypherExecutionContextManager {
-    async fn start(&self) -> Result<(), ContextManagerError> {
-        info!("[CECTXMGR-{}] Starting..", self.symbol);
+    type Output = ExecutionContext;
+    type GlobalContextInput = GlobalContext;
+    type OperationContextInput = OperationContext;
+    type OracleInfoInput = OracleInfo;
 
-        let mut g_ctx_update_receiver = self.global_context_builder.subscribe();
-        let mut op_ctx_update_receiver = self.operation_context_builder.subscribe();
+    async fn operation_context_writer(&self) -> RwLockWriteGuard<OperationContext> {
+        self.operation_context.write().await
+    }
 
-        loop {
-            tokio::select! {
-                g_ctx_update = g_ctx_update_receiver.recv() => {
-                    if g_ctx_update.is_err() {
-                        warn!("[CECTXMGR-{}] There was an error receiving global context update.", self.symbol);
-                        continue;
-                    } else {
-                        let new_g_ctx = g_ctx_update.unwrap();
-                        let mut g_ctx = self.global_context.write().await;
-                        *g_ctx = new_g_ctx;
-                        drop(g_ctx);
-                        match self.send().await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[CECTXMGR-{}] There was an error sending execution context update: {:?}", self.symbol, e.to_string());
-                            }
-                        };
-                    }
-                }
-                op_ctx_update = op_ctx_update_receiver.recv() => {
-                    if op_ctx_update.is_err() {
-                        warn!("[CECTXMGR-{}] There was an error receiving operation context update.", self.symbol);
-                        continue;
-                    } else {
-                        let new_op_ctx = op_ctx_update.unwrap();
-                        let mut op_ctx = self.operation_context.write().await;
-                        *op_ctx = new_op_ctx;
-                        drop(op_ctx);
-                        match self.send().await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[CECTXMGR-{}] There was an error sending execution context update: {:?}", self.symbol, e.to_string());
-                            }
-                        };
-                    }
-                }
-            }
-        }
+    async fn global_context_writer(&self) -> RwLockWriteGuard<GlobalContext> {
+        self.global_context.write().await
+    }
 
-        Ok(())
+    async fn oracle_info_writer(&self) -> RwLockWriteGuard<OracleInfo> {
+        self.oracle_info.write().await
+    }
+
+    fn global_context_receiver(&self) -> Receiver<GlobalContext> {
+        self.global_context_builder.subscribe()
+    }
+
+    fn operation_context_receiver(&self) -> Receiver<OperationContext> {
+        self.operation_context_builder.subscribe()
+    }
+
+    fn oracle_info_receiver(&self) -> Receiver<OracleInfo> {
+        self.oracle_provider.subscribe()
+    }
+
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
     }
 
     async fn send(&self) -> Result<(), ContextManagerError> {
         let operation_context = self.operation_context.read().await;
         let global_context = self.global_context.read().await;
+        let oracle_info = self.oracle_info.read().await;
+
+        // sanity checks
+        // let's hold off on sending an execution context update until
+        // 1. oracle price has been received
+        if oracle_info.price == I80F48::ZERO {
+            return Ok(());
+        }
+
+        // 2. account context exist
+        if global_context.user.account_ctx.state.authority == Pubkey::default() {
+            return Ok(());
+        }
+
+        // 3. sub accounts have been loaded
+        if global_context.user.sub_account_ctxs.is_empty() {
+            return Ok(());
+        }
 
         info!(
-            "[CECTXMGR-{}] Sending execution context update..",
+            "{} - [{}] Sending execution context update..",
+            type_name::<Self>(),
             self.symbol
         );
 
         match self.update_sender.send(ExecutionContext {
             operation: operation_context.clone(),
             global: global_context.clone(),
+            oracle_info: oracle_info.clone(),
         }) {
             Ok(_) => Ok(()),
             Err(e) => Err(ContextManagerError::SendError(e)),
@@ -109,16 +128,30 @@ impl ContextManager for CypherExecutionContextManager {
     }
 
     async fn build(&self) -> ExecutionContext {
-        info!("[CECTXMGR-{}] Building execution context..", self.symbol);
+        info!(
+            "{} - [{}] Building execution context..",
+            type_name::<Self>(),
+            self.symbol
+        );
         let operation_context = self.operation_context.read().await;
         let global_context = self.global_context.read().await;
+        let oracle_info = self.oracle_info.read().await;
         ExecutionContext {
             operation: operation_context.clone(),
             global: global_context.clone(),
+            oracle_info: oracle_info.clone(),
         }
+    }
+
+    fn sender(&self) -> Arc<Sender<ExecutionContext>> {
+        self.update_sender.clone()
     }
 
     fn subscribe(&self) -> Receiver<ExecutionContext> {
         self.update_sender.subscribe()
+    }
+
+    fn symbol(&self) -> &str {
+        self.symbol.as_str()
     }
 }

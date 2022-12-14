@@ -1,6 +1,12 @@
+use async_trait::async_trait;
 use log::info;
+use std::any::type_name;
 
-use crate::common::hedger::{Hedger, HedgerError, HedgerPulseResult};
+use crate::common::{
+    context::ExecutionContext,
+    hedger::{Hedger, HedgerError, HedgerPulseResult},
+    strategy::{Strategy, StrategyError},
+};
 
 pub struct PerpsHedger {
     symbol: String,
@@ -13,9 +19,32 @@ impl PerpsHedger {
 }
 
 impl Hedger for PerpsHedger {
-    fn pulse(&self) -> Result<HedgerPulseResult, HedgerError> {
-        info!("[CMKR-{}] Running cypher perps hedger logic..", self.symbol);
+    type Input = ExecutionContext;
+    fn pulse(&self, input: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
+        info!(
+            "{} - [{}] Running cypher perps hedger logic..",
+            type_name::<Self>(),
+            self.symbol
+        );
 
         Ok(HedgerPulseResult::default())
+    }
+}
+
+#[async_trait]
+impl Strategy for PerpsHedger
+where
+    Self: Hedger,
+{
+    type Input = ExecutionContext;
+    type Output = HedgerPulseResult;
+
+    async fn execute(&self, ctx: &ExecutionContext) -> Result<HedgerPulseResult, StrategyError> {
+        info!(
+            "{} - [{}] Running strategy..",
+            type_name::<Self>(),
+            self.symbol,
+        );
+        Ok(HedgerPulseResult { size_executed: 0 })
     }
 }

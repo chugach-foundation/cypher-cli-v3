@@ -5,6 +5,7 @@ mod common;
 mod context;
 mod liquidator;
 mod market_maker;
+mod oracle;
 mod random;
 pub mod utils;
 

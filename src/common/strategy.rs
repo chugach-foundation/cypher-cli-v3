@@ -4,17 +4,22 @@ use thiserror::Error;
 use super::{context::ExecutionContext, hedger::HedgerError, maker::MakerError};
 
 #[derive(Error, Debug)]
-pub enum StrategyError {}
-
-/// The result of a strategy execution tick.
-pub struct StrategyExecutionResult {}
+pub enum StrategyError {
+    #[error(transparent)]
+    MakerError(#[from] MakerError),
+    #[error(transparent)]
+    HedgerError(#[from] HedgerError),
+}
 
 /// A trait that represents shared functionality for strategies.
 #[async_trait]
 pub trait Strategy: Send + Sync {
-    /// Executes the strategy.
-    async fn execute(
-        &self,
-        ctx: &ExecutionContext,
-    ) -> Result<StrategyExecutionResult, StrategyError>;
+    /// The contextinput for the [`Strategy`].
+    type Input;
+
+    /// The output type of the [`Strategy`]'s execution
+    type Output;
+
+    /// Executes the [`Strategy`]].
+    async fn execute(&self, ctx: &Self::Input) -> Result<Self::Output, StrategyError>;
 }

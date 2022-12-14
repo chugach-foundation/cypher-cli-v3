@@ -6,7 +6,7 @@ use cypher_utils::{
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::sync::Arc;
+use std::{any::type_name, sync::Arc};
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -31,27 +31,13 @@ impl GlobalContextState {
         self.cache.reload_from_account_data(data);
     }
 
-    fn update_account(&mut self, account: &Pubkey, data: &[u8]) -> Result<(), ContextError> {
-        match self.user.reload_account_from_account_data(account, data) {
-            Ok(()) => (),
-            Err(e) => {
-                return Err(e);
-            }
-        }
-        Ok(())
+    fn update_account(&mut self, account: &Pubkey, data: &[u8]) {
+        self.user.reload_account_from_account_data(account, data);
     }
 
-    fn update_sub_account(&mut self, account: &Pubkey, data: &[u8]) -> Result<(), ContextError> {
-        match self
-            .user
-            .reload_sub_account_from_account_data(account, data)
-        {
-            Ok(()) => (),
-            Err(e) => {
-                return Err(e);
-            }
-        }
-        Ok(())
+    fn update_sub_account(&mut self, account: &Pubkey, data: &[u8]) {
+        self.user
+            .reload_sub_account_from_account_data(account, data);
     }
 }
 
@@ -64,17 +50,24 @@ pub struct GlobalContextBuilder {
     sub_account: Pubkey,
     state: RwLock<GlobalContextState>,
     update_sender: Arc<Sender<GlobalContext>>,
+    shutdown_sender: Arc<Sender<bool>>,
 }
 
 impl GlobalContextBuilder {
     /// Creates a new [`GlobalContextBuilder`].
-    pub fn new(accounts_cache: Arc<AccountsCache>, account: Pubkey, sub_account: Pubkey) -> Self {
+    pub fn new(
+        accounts_cache: Arc<AccountsCache>,
+        shutdown_sender: Arc<Sender<bool>>,
+        account: Pubkey,
+        sub_account: Pubkey,
+    ) -> Self {
         Self {
             accounts_cache,
+            shutdown_sender,
             account,
             sub_account,
             state: RwLock::new(GlobalContextState::default()),
-            update_sender: Arc::new(channel::<GlobalContext>(1).0),
+            update_sender: Arc::new(channel::<GlobalContext>(50).0),
         }
     }
 }
@@ -83,23 +76,12 @@ impl GlobalContextBuilder {
 impl ContextBuilder for GlobalContextBuilder {
     type Output = GlobalContext;
 
-    async fn start(&self) -> Result<(), ContextBuilderError> {
-        let mut sub = self.accounts_cache.subscribe();
+    fn cache_receiver(&self) -> Receiver<AccountState> {
+        self.accounts_cache.subscribe()
+    }
 
-        loop {
-            tokio::select! {
-                account_state_update = sub.recv() => {
-                    if account_state_update.is_err() {
-                        warn!("[GCTX-BLDR] There was an error receiving account state update.");
-                        continue;
-                    } else {
-                        let account_state = account_state_update.unwrap();
-                        self.process_update(&account_state).await;
-                        self.send().await;
-                    }
-                }
-            }
-        }
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
     }
 
     async fn send(&self) -> Result<(), ContextBuilderError> {
@@ -122,48 +104,49 @@ impl ContextBuilder for GlobalContextBuilder {
         if account_state.account == cache_account::id() {
             let mut state = self.state.write().await;
             state.update_cache(&account_state.data);
-            info!("[GCTX-BLDR] Sucessfully processed cache account update.");
+            info!(
+                "{} - Sucessfully processed cache account update.",
+                type_name::<Self>(),
+            );
+            return Ok(());
         }
 
         // check if this account is the user account
         if account_state.account == self.account {
             let mut state = self.state.write().await;
-            match state.update_account(&self.account, &account_state.data) {
-                Ok(()) => {
-                    info!("[GCTX-BLDR] Sucessfully processed cypher account update.");
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "account".to_string(),
-                    ))
-                }
-            }
+            state.update_account(&self.account, &account_state.data);
+            info!(
+                "{} - Sucessfully processed cypher account update.",
+                type_name::<Self>(),
+            );
+            return Ok(());
         }
 
         // check if this account is the user account
         if account_state.account == self.sub_account {
             let mut state = self.state.write().await;
-            match state.update_sub_account(&self.account, &account_state.data) {
-                Ok(()) => {
-                    info!("[GCTX-BLDR] Sucessfully processed cypher sub account update.");
-                    Ok(())
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "sub account".to_string(),
-                    ))
-                }
-            }
+            state.update_sub_account(&self.sub_account, &account_state.data);
+            info!(
+                "{} - Sucessfully processed cypher sub account update.",
+                type_name::<Self>(),
+            );
+            return Ok(());
         } else {
-            Ok(())
+            Err(ContextBuilderError::UnrecognizedAccount(
+                account_state.account,
+            ))
         }
+    }
+
+    fn sender(&self) -> Arc<Sender<GlobalContext>> {
+        self.update_sender.clone()
     }
 
     fn subscribe(&self) -> Receiver<GlobalContext> {
         self.update_sender.subscribe()
     }
 
-    fn symbol(&self) -> String {
-        "GLOBAL".to_string()
+    fn symbol(&self) -> &str {
+        "GlobalContext"
     }
 }

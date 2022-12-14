@@ -2,11 +2,11 @@
     "accountNumber": 0,
     "subAccountNumber": 0,
     "makerConfig": {
-        "maxQuote": 10,
-        "spread": 25,
+        "maxQuote": 1000,
+        "spread": 20,
         "layers": 5,
-        "spacingBps": 5,
-        "stepAmount": 25,
+        "spacingBps": 20,
+        "timeInForce": 30,
         "symbol": "SOL-PERP"
     },
     "inventoryConfig": {

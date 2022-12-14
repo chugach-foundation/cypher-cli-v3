@@ -5,4 +5,3 @@ pub mod hedging;
 pub mod inventory;
 pub mod making;
 pub mod orders;
-pub mod strategies;

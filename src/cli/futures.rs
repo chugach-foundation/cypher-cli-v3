@@ -467,7 +467,7 @@ pub async fn list_futures_open_orders(
             }
         };
 
-        let book = book.state.read().await;
+        let book = book.state;
         let open_orders = orders_account.get_orders();
 
         for order in open_orders {
@@ -671,7 +671,7 @@ pub async fn process_futures_market_order(
         }
     };
 
-    let impact_price = ob_ctx.get_impact_price(size.abs().to_num(), side).await;
+    let impact_price = ob_ctx.get_impact_price(size.abs().to_num(), side);
 
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(
@@ -849,12 +849,10 @@ pub async fn process_futures_close(
     } else {
         Side::Ask
     };
-    let impact_price = ob_ctx
-        .get_impact_price(
-            fixed_to_ui(position_size.abs(), market.state.inner.config.decimals).to_num(),
-            side,
-        )
-        .await;
+    let impact_price = ob_ctx.get_impact_price(
+        fixed_to_ui(position_size.abs(), market.state.inner.config.decimals).to_num(),
+        side,
+    );
 
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(

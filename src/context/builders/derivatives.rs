@@ -5,12 +5,12 @@ use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{
         AgnosticEventQueueContext, AgnosticOpenOrdersContext, AgnosticOrderBookContext,
-        ContextError, MarketContext,
+        ContextError, MarketContext, PoolContext,
     },
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::sync::Arc;
+use std::{any::type_name, sync::Arc};
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -24,6 +24,8 @@ use crate::common::context::{
 /// The context state used for a derivatives market operation.
 #[derive(Default)]
 pub struct DerivativeContextState<T> {
+    /// The quote pool context.
+    pub quote_pool: PoolContext,
     /// The market context.
     pub market: MarketContext<T>,
     /// The AOB event queue context.
@@ -38,40 +40,38 @@ impl<T> DerivativeContextState<T>
 where
     T: Default + Market + ZeroCopy + Owner + Send + Sync,
 {
-    fn update_market(&mut self, market: &Pubkey, data: &[u8]) -> Result<(), ContextError> {
-        self.market = match MarketContext::<T>::from_account_data(data, market) {
-            Ok(m) => m,
-            Err(e) => {
-                return Err(e);
-            }
-        };
-        Ok(())
+    fn update_quote_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+        self.quote_pool.reload_from_account_data(data);
     }
 
-    fn update_event_queue(
+    fn update_quote_pool_node(&mut self, pool_node: &Pubkey, data: &[u8]) {
+        self.quote_pool
+            .reload_pool_node_from_account_data(pool_node, data);
+    }
+
+    fn update_market(&mut self, market: &Pubkey, data: &[u8]) {
+        self.market.reload_from_account_data(data);
+    }
+
+    fn update_event_queue(&mut self, market: &Pubkey, event_queue: &Pubkey, data: &[u8]) {
+        self.event_queue.reload_from_account_data(data);
+    }
+
+    fn update_orderbook(
         &mut self,
         market: &Pubkey,
-        event_queue: &Pubkey,
+        bids: &Pubkey,
+        asks: &Pubkey,
+        market_state: &dyn Market,
         data: &[u8],
-    ) -> Result<(), ContextError> {
-        self.event_queue =
-            match AgnosticEventQueueContext::from_account_data(market, event_queue, data) {
-                Ok(eq) => eq,
-                Err(e) => {
-                    return Err(e);
-                }
-            };
-        Ok(())
-    }
-
-    async fn update_orderbook(&mut self, market_state: &dyn Market, data: &[u8], side: Side) {
+        side: Side,
+    ) {
         self.orderbook
-            .reload_from_account_data(market_state, data, side)
-            .await
+            .reload_from_account_data(market_state, data, side);
     }
 
-    async fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
-        self.open_orders.reload_from_account_data(data).await;
+    fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
+        self.open_orders.reload_from_account_data(data);
     }
 }
 
@@ -86,7 +86,10 @@ pub struct DerivativeContextBuilder<T> {
     bids: Pubkey,
     asks: Pubkey,
     open_orders: Pubkey,
+    quote_pool: Pubkey,
+    quote_pool_nodes: Vec<Pubkey>,
     state: RwLock<DerivativeContextState<T>>,
+    shutdown_sender: Arc<Sender<bool>>,
     update_sender: Arc<Sender<OperationContext>>,
     symbol: String,
 }
@@ -98,24 +101,30 @@ where
     /// Creates a new [`DerivativeContextBuilder<T>`].
     pub fn new(
         accounts_cache: Arc<AccountsCache>,
+        shutdown_sender: Arc<Sender<bool>>,
         market_state: T,
         market: Pubkey,
         event_queue: Pubkey,
         bids: Pubkey,
         asks: Pubkey,
         open_orders: Pubkey,
+        quote_pool: Pubkey,
+        quote_pool_nodes: Vec<Pubkey>,
         symbol: String,
     ) -> Self {
         Self {
             accounts_cache,
+            shutdown_sender,
             market_state,
             market,
             event_queue,
             bids,
             asks,
             open_orders,
+            quote_pool,
+            quote_pool_nodes,
             state: RwLock::new(DerivativeContextState::<T>::default()),
-            update_sender: Arc::new(channel::<OperationContext>(1).0),
+            update_sender: Arc::new(channel::<OperationContext>(50).0),
             symbol,
         }
     }
@@ -128,35 +137,12 @@ where
 {
     type Output = OperationContext;
 
-    async fn start(&self) -> Result<(), ContextBuilderError> {
-        let mut sub = self.accounts_cache.subscribe();
+    fn cache_receiver(&self) -> Receiver<AccountState> {
+        self.accounts_cache.subscribe()
+    }
 
-        loop {
-            tokio::select! {
-                account_state_update = sub.recv() => {
-                    if account_state_update.is_err() {
-                        warn!("[DRVCTX-BLDR-{}] There was an error receiving account state update.", self.symbol);
-                        continue;
-                    } else {
-                        let account_state = account_state_update.unwrap();
-                        match self.process_update(&account_state).await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[DRVCTX-BLDR-{}] An error occurred while processing account update: {:?}", self.symbol, e);
-                            }
-                        };
-                        match self.send().await {
-                            Ok(()) => (),
-                            Err(e) => {
-                                warn!("[DRVCTX-BLDR-{}] There was an error sending operation context update: {:?}", self.symbol, e.to_string());
-                            }
-                        };
-                    }
-                }
-            }
-        }
-
-        Ok(())
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
     }
 
     async fn send(&self) -> Result<(), ContextBuilderError> {
@@ -174,82 +160,118 @@ where
         &self,
         account_state: &AccountState,
     ) -> Result<(), ContextBuilderError> {
+        // check if this account is the quote pool for this market
+        if account_state.account == self.quote_pool {
+            let mut state = self.state.write().await;
+            state.update_quote_pool(&self.quote_pool, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed quote pool account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
+        }
+
+        // check if it is one of the quote pool nodes
+        if self.quote_pool_nodes.contains(&account_state.account) {
+            let mut state = self.state.write().await;
+            state.update_quote_pool_node(&account_state.account, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed quote pool node account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
+        }
+
         // check if this account is the market
         if account_state.account == self.market {
             let mut state = self.state.write().await;
-            match state.update_market(&self.market, &account_state.data) {
-                Ok(()) => {
-                    info!(
-                        "[DRVCTX-BLDR-{}] Sucessfully processed derivative market account update.",
-                        self.symbol
-                    );
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "market account".to_string(),
-                    ))
-                }
-            }
+            state.update_market(&self.market, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed derivative market account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the event queue
         if account_state.account == self.event_queue {
             let mut state = self.state.write().await;
-            match state.update_event_queue(&self.market, &self.event_queue, &account_state.data) {
-                Ok(()) => {
-                    info!("[DRVCTX-BLDR-{}] Sucessfully processed derivative market event queue account update.", self.symbol);
-                }
-                Err(e) => {
-                    return Err(ContextBuilderError::ProcessUpdateError(
-                        "event queue".to_string(),
-                    ))
-                }
-            };
+            state.update_event_queue(&self.market, &self.event_queue, &account_state.data);
+            info!(
+                "{} - [{}] Sucessfully processed derivative market event queue account update.",
+                type_name::<Self>(),
+                self.symbol
+            );
+            return Ok(());
         }
 
         // check if this account is the bid side of the book
         if account_state.account == self.bids {
             let mut state = self.state.write().await;
-            state
-                .update_orderbook(&self.market_state, &account_state.data, Side::Bid)
-                .await;
+            state.update_orderbook(
+                &self.market,
+                &self.bids,
+                &self.asks,
+                &self.market_state,
+                &account_state.data,
+                Side::Bid,
+            );
             info!(
-                "[DRVCTX-BLDR-{}] Sucessfully processed derivative market bids account update.",
+                "{} - [{}] Sucessfully processed derivative market bids account update.",
+                type_name::<Self>(),
                 self.symbol
             );
+            return Ok(());
         }
 
         // check if this account is the ask side of the book
         if account_state.account == self.asks {
             let mut state = self.state.write().await;
-            state
-                .update_orderbook(&self.market_state, &account_state.data, Side::Ask)
-                .await;
+            state.update_orderbook(
+                &self.market,
+                &self.bids,
+                &self.asks,
+                &self.market_state,
+                &account_state.data,
+                Side::Ask,
+            );
             info!(
-                "[DRVCTX-BLDR-{}] Sucessfully processed derivative market asks account update.",
+                "{} - [{}] Sucessfully processed derivative market asks account update.",
+                type_name::<Self>(),
                 self.symbol
             );
+            return Ok(());
         }
 
         // check if this account is the open orders
         if account_state.account == self.open_orders {
             let mut state = self.state.write().await;
-            state
-                .update_open_orders(&self.open_orders, &account_state.data)
-                .await;
+            state.update_open_orders(&self.open_orders, &account_state.data);
             info!(
-                "[DRVCTX-BLDR-{}] Sucessfully processed derivative market open orders account update.", self.symbol
+                "{} - [{}] Sucessfully processed derivative market open orders account update.",
+                type_name::<Self>(),
+                self.symbol
             );
+            return Ok(());
         }
 
-        Ok(())
+        Err(ContextBuilderError::UnrecognizedAccount(
+            account_state.account,
+        ))
+    }
+
+    fn sender(&self) -> Arc<Sender<OperationContext>> {
+        self.update_sender.clone()
     }
 
     fn subscribe(&self) -> Receiver<OperationContext> {
         self.update_sender.subscribe()
     }
 
-    fn symbol(&self) -> String {
-        self.symbol.to_string()
+    fn symbol(&self) -> &str {
+        self.symbol.as_str()
     }
 }
