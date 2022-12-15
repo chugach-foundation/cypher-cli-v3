@@ -60,7 +60,7 @@ pub async fn parse_args(matches: &ArgMatches<'_>) -> Result<CliConfig, Box<dyn e
         keypair_path: keypair_path.to_string(),
         rpc_client: Some(Arc::new(RpcClient::new_with_commitment(
             normalized_url.to_string(),
-            CommitmentConfig::confirmed(),
+            CommitmentConfig::processed(),
         ))),
         pubsub_client,
         keypair: Some(keypair),

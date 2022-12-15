@@ -266,7 +266,18 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
                 side,
                 size,
                 price,
-            } => process_spot_limit_order(config, symbol.as_str(), *side, *size, *price).await,
+                order_type,
+            } => {
+                process_spot_limit_order(
+                    config,
+                    symbol.as_str(),
+                    *side,
+                    *size,
+                    *price,
+                    order_type.as_str(),
+                )
+                .await
+            }
         },
     }
 }
