@@ -293,6 +293,7 @@ pub async fn process_market_maker_command(
             rpc_client,
             shutdown_sender.clone(),
             maker_context_builder.sender(),
+            &mm_config,
             &maker_context_info,
         )
         .await
@@ -312,6 +313,7 @@ pub async fn process_market_maker_command(
             rpc_client,
             shutdown_sender.clone(),
             hedger_context_builder.sender(),
+            &mm_config,
             &hedger_context_info,
         )
         .await
@@ -327,10 +329,13 @@ pub async fn process_market_maker_command(
         };
 
     let maker = match get_maker_from_config(
+        shutdown_sender.clone(),
+        maker_context_manager.sender(),
+        maker_order_manager.sender(),
+        maker_order_manager.action_sender(),
         &cypher_ctx,
         &maker_context_info,
         &mm_config,
-        maker_order_manager.clone(),
     )
     .await
     {
@@ -474,27 +479,47 @@ pub async fn process_market_maker_command(
         }
     });
 
-    let maker_runner_opts = RunnerOptions {
-        name: maker_context_info.symbol.to_string(),
-        shutdown: shutdown_sender.clone(),
-        execution_condition: ExecutionCondition::EventBased,
-        strategy: maker.clone(),
-        context_manager: maker_context_manager.clone(),
-    };
-
-    let maker_runner = Arc::new(Runner::new(maker_runner_opts));
-    let maker_runner_clone = maker_runner.clone();
-    let maker_runner_handle = tokio::spawn(async move {
-        match maker_runner_clone.run().await {
-            Ok(()) => (),
+    let maker_clone = maker.clone();
+    let maker_handle = tokio::spawn(async move {
+        match maker_clone.start().await {
+            Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Making Strategy Runner: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Maker: {:?}", e.to_string());
             }
         }
     });
+
+    let maker_clone = maker.clone();
+    let maker_handle = tokio::spawn(async move {
+        match maker_clone.start().await {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("There was an error running Maker: {:?}", e.to_string());
+            }
+        }
+    });
+
+    // let maker_runner_opts = RunnerOptions {
+    //     name: maker_context_info.symbol.to_string(),
+    //     shutdown: shutdown_sender.clone(),
+    //     execution_condition: ExecutionCondition::EventBased,
+    //     strategy: maker.clone(),
+    //     context_manager: maker_context_manager.clone(),
+    // };
+
+    // let maker_runner = Arc::new(Runner::new(maker_runner_opts));
+    // let maker_runner_clone = maker_runner.clone();
+    // let maker_runner_handle = tokio::spawn(async move {
+    //     match maker_runner_clone.run().await {
+    //         Ok(()) => (),
+    //         Err(e) => {
+    //             warn!(
+    //                 "There was an error running Making Strategy Runner: {:?}",
+    //                 e.to_string()
+    //             );
+    //         }
+    //     }
+    // });
 
     let hedger_runner_opts = RunnerOptions {
         name: hedger_context_info.symbol.to_string(),
@@ -561,7 +586,7 @@ pub async fn process_market_maker_command(
         hedger_context_manager_handle,
         maker_order_manager_handle,
         hedger_order_manager_handle,
-        maker_runner_handle,
+        maker_handle,
         hedger_runner_handle
     );
 

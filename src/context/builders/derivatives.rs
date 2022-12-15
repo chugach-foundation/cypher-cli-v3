@@ -137,8 +137,17 @@ where
 {
     type Output = OperationContext;
 
-    fn cache_receiver(&self) -> Receiver<AccountState> {
-        self.accounts_cache.subscribe()
+    async fn cache_receiver(&self) -> Receiver<AccountState> {
+        let mut accounts = vec![
+            self.market,
+            self.event_queue,
+            self.bids,
+            self.asks,
+            self.open_orders,
+            self.quote_pool,
+        ];
+        accounts.extend(self.quote_pool_nodes.clone());
+        self.accounts_cache.subscribe(&accounts).await
     }
 
     fn shutdown_receiver(&self) -> Receiver<bool> {

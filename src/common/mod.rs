@@ -1,4 +1,5 @@
 pub mod context;
+pub mod dispatcher;
 pub mod hedger;
 pub mod info;
 pub mod inventory;

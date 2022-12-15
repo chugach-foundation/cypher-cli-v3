@@ -91,8 +91,8 @@ pub async fn get_or_create_spot_orders_account(
     pool: &Pubkey,
     token_mint: &Pubkey,
     orders_account: &Pubkey,
-) -> Result<Box<OrdersAccount>, ClientError> {
-    let account_res = get_orders_account(rpc_client, orders_account).await;
+) -> Result<OpenOrders, ClientError> {
+    let account_res = get_spot_orders_account(rpc_client, orders_account).await;
 
     if account_res.is_ok() {
         info!("Orders Account for market {} already exists.", market);
@@ -119,7 +119,7 @@ pub async fn get_or_create_spot_orders_account(
             }
         }
 
-        match get_orders_account(rpc_client, orders_account).await {
+        match get_spot_orders_account(rpc_client, orders_account).await {
             Ok(a) => Ok(a),
             Err(e) => Err(e),
         }

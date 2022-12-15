@@ -33,7 +33,7 @@ use crate::{
         inventory::InventoryManager,
         maker::{Maker, MakerPulseResult},
         oracle::{OracleInfo, OracleProvider},
-        orders::OrderManager,
+        orders::{Action, ManagedOrder, OrderManager},
         strategy::Strategy,
     },
     context::{
@@ -370,11 +370,17 @@ pub async fn get_context_info(
 
 /// Gets the appropriate [`Maker`] for the given config.
 pub async fn get_maker_from_config(
+    shutdown_sender: Arc<Sender<bool>>,
+    context_sender: Arc<Sender<ExecutionContext>>,
+    orders_sender: Arc<Sender<Vec<ManagedOrder>>>,
+    action_sender: Arc<Sender<Action>>,
     cypher_ctx: &CypherContext,
     context_info: &ContextInfo,
     config: &Config,
-    order_manager: Arc<dyn OrderManager<Input = OperationContext>>,
-) -> Result<Arc<dyn Strategy<Input = ExecutionContext, Output = MakerPulseResult>>, Error> {
+) -> Result<
+    Arc<dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send>,
+    Error,
+> {
     info!("Preparing Maker for {}.", context_info.symbol);
 
     info!(
@@ -413,32 +419,42 @@ pub async fn get_maker_from_config(
                 .unwrap(),
         ));
 
-    let maker: Arc<dyn Strategy<Input = ExecutionContext, Output = MakerPulseResult>> =
-        match &context_info.context_accounts {
-            Accounts::Futures(f) => Arc::new(FuturesMaker::new(
-                inventory_mngr,
-                order_manager.clone(),
-                config.maker_config.layers as usize,
-                config.maker_config.spacing_bps,
-                config.maker_config.time_in_force,
-                context_info.symbol.to_string(),
-            )),
-            Accounts::Perpetuals(p) => Arc::new(PerpsMaker::new(
-                inventory_mngr,
-                order_manager.clone(),
-                config.maker_config.layers as usize,
-                config.maker_config.spacing_bps,
-                config.maker_config.time_in_force,
-                context_info.symbol.to_string(),
-            )),
-            Accounts::Spot(s) => Arc::new(SpotMaker::new(
-                inventory_mngr,
-                order_manager.clone(),
-                config.maker_config.layers as usize,
-                config.maker_config.spacing_bps,
-                context_info.symbol.to_string(),
-            )),
-        };
+    let maker: Arc<
+        dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send,
+    > = match &context_info.context_accounts {
+        Accounts::Futures(f) => Arc::new(FuturesMaker::new(
+            inventory_mngr,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            orders_sender.clone(),
+            action_sender.clone(),
+            config.maker_config.layers as usize,
+            config.maker_config.spacing_bps,
+            config.maker_config.time_in_force,
+            context_info.symbol.to_string(),
+        )),
+        Accounts::Perpetuals(p) => Arc::new(PerpsMaker::new(
+            inventory_mngr,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            orders_sender.clone(),
+            action_sender.clone(),
+            config.maker_config.layers as usize,
+            config.maker_config.spacing_bps,
+            config.maker_config.time_in_force,
+            context_info.symbol.to_string(),
+        )),
+        Accounts::Spot(s) => Arc::new(SpotMaker::new(
+            inventory_mngr,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            orders_sender.clone(),
+            action_sender.clone(),
+            config.maker_config.layers as usize,
+            config.maker_config.spacing_bps,
+            context_info.symbol.to_string(),
+        )),
+    };
 
     Ok(maker)
 }
@@ -464,6 +480,7 @@ pub async fn get_order_manager(
     rpc_client: &Arc<RpcClient>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<OperationContext>>,
+    config: &Config,
     context_info: &ContextInfo,
 ) -> Result<Arc<dyn OrderManager<Input = OperationContext>>, Error> {
     info!("Preparing Order Manager for {}", context_info.symbol);
@@ -478,6 +495,7 @@ pub async fn get_order_manager(
                 context_info.user_accounts.clone(),
                 f.clone(),
                 context_info.market_metadata.clone(),
+                config.maker_config.time_in_force,
                 context_info.symbol.to_string(),
             )),
             Accounts::Perpetuals(p) => Arc::new(PerpsOrderManager::new(
@@ -488,6 +506,7 @@ pub async fn get_order_manager(
                 context_info.user_accounts.clone(),
                 p.clone(),
                 context_info.market_metadata.clone(),
+                config.maker_config.time_in_force,
                 context_info.symbol.to_string(),
             )),
             Accounts::Spot(s) => Arc::new(SpotOrderManager::new(
@@ -498,6 +517,7 @@ pub async fn get_order_manager(
                 context_info.user_accounts.clone(),
                 s.clone(),
                 context_info.market_metadata.clone(),
+                config.maker_config.time_in_force,
                 context_info.symbol.to_string(),
             )),
         };

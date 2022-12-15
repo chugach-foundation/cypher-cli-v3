@@ -1,5 +1,5 @@
 use log::{info, warn};
-use std::{any::type_name, error, sync::Arc};
+use std::{any::type_name, error, fmt::Debug, sync::Arc};
 use thiserror::Error;
 use tokio::{
     sync::broadcast::Sender,
@@ -8,6 +8,7 @@ use tokio::{
 
 use super::{
     context::manager::ContextManager,
+    dispatcher::DispatcherError,
     orders::OrderManager,
     strategy::{Strategy, StrategyError},
 };
@@ -144,7 +145,6 @@ where
                         Ok(ctx) => {
                             match self.strategy.execute(&ctx).await {
                                 Ok(r) => {
-
                                 },
                                 Err(e) => {
                                     info!("{} - [{}] An error occurred while executing strategy: {:?}.", type_name::<Self>(), self.name, e);

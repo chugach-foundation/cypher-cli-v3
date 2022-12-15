@@ -16,7 +16,7 @@ use solana_sdk::{
 };
 use std::{ops::Mul, sync::Arc};
 use tokio::sync::{
-    broadcast::{Receiver, Sender},
+    broadcast::{channel, Receiver, Sender},
     RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 
@@ -24,7 +24,7 @@ use crate::common::{
     context::OperationContext,
     info::{MarketMetadata, SpotMarketInfo, UserInfo},
     orders::{
-        CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrderManager,
+        Action, CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrderManager,
         OrderManagerError,
     },
 };
@@ -34,6 +34,8 @@ pub struct SpotOrderManager {
     signer: Arc<Keypair>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<OperationContext>>,
+    action_sender: Arc<Sender<Action>>,
+    update_sender: Arc<Sender<Vec<ManagedOrder>>>,
     client_order_id: RwLock<u64>,
     managed_orders: RwLock<Vec<ManagedOrder>>,
     open_orders: RwLock<Vec<Order>>,
@@ -42,6 +44,7 @@ pub struct SpotOrderManager {
     user_info: UserInfo,
     market_info: SpotMarketInfo,
     market_metadata: MarketMetadata,
+    time_in_force: u64,
     symbol: String,
 }
 
@@ -54,6 +57,7 @@ impl SpotOrderManager {
         user_info: UserInfo,
         market_info: SpotMarketInfo,
         market_metadata: MarketMetadata,
+        time_in_force: u64,
         symbol: String,
     ) -> Self {
         Self {
@@ -64,7 +68,10 @@ impl SpotOrderManager {
             user_info,
             market_info,
             market_metadata,
+            time_in_force,
             symbol,
+            action_sender: Arc::new(channel::<Action>(u16::MAX as usize).0),
+            update_sender: Arc::new(channel::<Vec<ManagedOrder>>(u16::MAX as usize).0),
             client_order_id: RwLock::new(u64::default()),
             managed_orders: RwLock::new(Vec::new()),
             open_orders: RwLock::new(Vec::new()),
@@ -78,6 +85,10 @@ impl SpotOrderManager {
 impl OrderManager for SpotOrderManager {
     type Input = OperationContext;
 
+    fn time_in_force(&self) -> u64 {
+        self.time_in_force
+    }
+
     fn rpc_client(&self) -> Arc<RpcClient> {
         self.rpc_client.clone()
     }
@@ -90,8 +101,20 @@ impl OrderManager for SpotOrderManager {
         self.context_sender.subscribe()
     }
 
+    fn action_receiver(&self) -> Receiver<Action> {
+        self.action_sender.subscribe()
+    }
+
+    fn action_sender(&self) -> Arc<Sender<Action>> {
+        self.action_sender.clone()
+    }
+
     fn shutdown_receiver(&self) -> Receiver<bool> {
         self.shutdown_sender.subscribe()
+    }
+
+    fn sender(&self) -> Arc<Sender<Vec<ManagedOrder>>> {
+        self.update_sender.clone()
     }
 
     async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>> {
@@ -214,7 +237,7 @@ impl OrderManager for SpotOrderManager {
         let mut cancel_order_ixs = Vec::new();
 
         for order_cancel in order_cancels {
-            let is_client_id = if order_cancel.client_order_id != u64::default() {
+            let is_client_id = if order_cancel.order_id == u128::default() {
                 true
             } else {
                 false

@@ -76,8 +76,9 @@ impl GlobalContextBuilder {
 impl ContextBuilder for GlobalContextBuilder {
     type Output = GlobalContext;
 
-    fn cache_receiver(&self) -> Receiver<AccountState> {
-        self.accounts_cache.subscribe()
+    async fn cache_receiver(&self) -> Receiver<AccountState> {
+        let accounts = vec![self.account, self.sub_account, cache_account::id()];
+        self.accounts_cache.subscribe(&accounts).await
     }
 
     fn shutdown_receiver(&self) -> Receiver<bool> {

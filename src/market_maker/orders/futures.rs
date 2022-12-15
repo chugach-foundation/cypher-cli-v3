@@ -20,7 +20,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{
-    broadcast::{Receiver, Sender},
+    broadcast::{channel, Receiver, Sender},
     RwLock, RwLockReadGuard, RwLockWriteGuard,
 };
 
@@ -28,7 +28,7 @@ use crate::common::{
     context::OperationContext,
     info::{FuturesMarketInfo, MarketMetadata, UserInfo},
     orders::{
-        CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrderManager,
+        Action, CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrderManager,
         OrderManagerError,
     },
 };
@@ -38,6 +38,8 @@ pub struct FuturesOrderManager {
     signer: Arc<Keypair>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<OperationContext>>,
+    action_sender: Arc<Sender<Action>>,
+    update_sender: Arc<Sender<Vec<ManagedOrder>>>,
     client_order_id: RwLock<u64>,
     managed_orders: RwLock<Vec<ManagedOrder>>,
     open_orders: RwLock<Vec<Order>>,
@@ -46,6 +48,7 @@ pub struct FuturesOrderManager {
     user_info: UserInfo,
     market_info: FuturesMarketInfo,
     market_metadata: MarketMetadata,
+    time_in_force: u64,
     symbol: String,
 }
 
@@ -58,6 +61,7 @@ impl FuturesOrderManager {
         user_info: UserInfo,
         market_info: FuturesMarketInfo,
         market_metadata: MarketMetadata,
+        time_in_force: u64,
         symbol: String,
     ) -> Self {
         Self {
@@ -68,7 +72,10 @@ impl FuturesOrderManager {
             user_info,
             market_info,
             market_metadata,
+            time_in_force,
             symbol,
+            action_sender: Arc::new(channel::<Action>(u16::MAX as usize).0),
+            update_sender: Arc::new(channel::<Vec<ManagedOrder>>(u16::MAX as usize).0),
             client_order_id: RwLock::new(u64::default()),
             managed_orders: RwLock::new(Vec::new()),
             open_orders: RwLock::new(Vec::new()),
@@ -82,6 +89,10 @@ impl FuturesOrderManager {
 impl OrderManager for FuturesOrderManager {
     type Input = OperationContext;
 
+    fn time_in_force(&self) -> u64 {
+        self.time_in_force
+    }
+
     fn rpc_client(&self) -> Arc<RpcClient> {
         self.rpc_client.clone()
     }
@@ -94,8 +105,20 @@ impl OrderManager for FuturesOrderManager {
         self.context_sender.subscribe()
     }
 
+    fn action_receiver(&self) -> Receiver<Action> {
+        self.action_sender.subscribe()
+    }
+
+    fn action_sender(&self) -> Arc<Sender<Action>> {
+        self.action_sender.clone()
+    }
+
     fn shutdown_receiver(&self) -> Receiver<bool> {
         self.shutdown_sender.subscribe()
+    }
+
+    fn sender(&self) -> Arc<Sender<Vec<ManagedOrder>>> {
+        self.update_sender.clone()
     }
 
     async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>> {
@@ -138,8 +161,10 @@ impl OrderManager for FuturesOrderManager {
         let mut new_order_ixs = Vec::new();
         let mut managed_orders = Vec::new();
 
+        let time_in_force = self.time_in_force();
+
         let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
-        let max_ts = cur_ts.as_secs() + 60;
+        let max_ts = cur_ts.as_secs() + time_in_force;
 
         for order_placement in order_placements {
             // OBS: this might be subject to changes, there's more efficient ways to do this obviously :)
@@ -209,7 +234,7 @@ impl OrderManager for FuturesOrderManager {
         let mut cancel_order_ixs = Vec::new();
 
         for order_cancel in order_cancels {
-            let is_client_id = if order_cancel.client_order_id != u64::default() {
+            let is_client_id = if order_cancel.order_id == u128::default() {
                 true
             } else {
                 false

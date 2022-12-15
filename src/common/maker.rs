@@ -2,16 +2,19 @@ use async_trait::async_trait;
 use cypher_client::Side;
 use cypher_utils::contexts::Order;
 use fixed::types::I80F48;
-use log::info;
+use log::{info, warn};
 use solana_sdk::instruction::Instruction;
 use std::{
     any::type_name,
     ops::{Add, Div, Mul, Sub},
     sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
-use tokio::sync::{RwLockReadGuard, RwLockWriteGuard};
+use tokio::sync::{
+    broadcast::{error::SendError, Receiver, Sender},
+    RwLockReadGuard, RwLockWriteGuard,
+};
 
 use crate::market_maker::constants::BPS_UNIT;
 
@@ -19,7 +22,9 @@ use super::{
     context::{ExecutionContext, OrdersContext},
     info::{Accounts, UserInfo},
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
-    orders::{CandidateCancel, CandidatePlacement, ManagedOrder, OrderManager, OrderManagerError},
+    orders::{
+        Action, CandidateCancel, CandidatePlacement, ManagedOrder, OrderManager, OrderManagerError,
+    },
 };
 
 /// Represents the result of a maker's pulse.
@@ -35,6 +40,8 @@ pub struct MakerPulseResult {
 pub enum MakerError {
     #[error(transparent)]
     OrderManagerError(#[from] OrderManagerError),
+    #[error("Action send error: {:?}", self)]
+    ActionSendError(SendError<Action>),
 }
 
 /// Defines shared functionality that different makers should implement
@@ -46,14 +53,20 @@ pub trait Maker: Send + Sync {
     /// The input type for the inventory manager.
     type InventoryManagerInput: Clone + Send + Sync;
 
-    /// The input type for the inventory manager.
-    type OrderManagerInput: Clone + Send + Sync + OrdersContext;
-
     /// Gets the inventory manager for the maker.
     fn inventory_manager(&self) -> Arc<dyn InventoryManager<Input = Self::InventoryManagerInput>>;
 
-    /// Gets the order manager for the maker.
-    fn order_manager(&self) -> Arc<dyn OrderManager<Input = Self::OrderManagerInput>>;
+    /// Gets the [`Receiver`] for the respective [`Self::Input`] data type.
+    fn context_receiver(&self) -> Receiver<Self::Input>;
+
+    /// Gets the [`Receiver`] for the existing orders.
+    fn orders_receiver(&self) -> Receiver<Vec<ManagedOrder>>;
+
+    /// Gets the [`Receiver`] for the existing orders.
+    fn shutdown_receiver(&self) -> Receiver<bool>;
+
+    /// Gets the [`Sender`] for the actions.
+    fn action_sender(&self) -> Arc<Sender<Action>>;
 
     /// Gets the order layer count.
     ///
@@ -70,6 +83,81 @@ pub trait Maker: Send + Sync {
     /// This value will be used to judge if certain orders are expired.
     fn time_in_force(&self) -> u64;
 
+    /// Gets the managed orders reader.
+    async fn context_reader(&self) -> RwLockReadGuard<Self::Input>;
+
+    /// Gets the managed orders writer.
+    async fn context_writer(&self) -> RwLockWriteGuard<Self::Input>;
+
+    /// Gets the managed orders reader.
+    async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>>;
+
+    /// Gets the managed orders writer.
+    async fn managed_orders_writer(&self) -> RwLockWriteGuard<Vec<ManagedOrder>>;
+
+    /// Starts the [`OrderManager`],
+    async fn start(&self) -> Result<(), MakerError> {
+        let mut context_receiver = self.context_receiver();
+        let mut orders_receiver = self.orders_receiver();
+        let mut shutdown_receiver = self.shutdown_receiver();
+        let symbol = self.symbol();
+
+        info!("{} - [{}] Starting maker..", type_name::<Self>(), symbol);
+
+        loop {
+            tokio::select! {
+                ctx_update = context_receiver.recv() => {
+                    match ctx_update {
+                        Ok(ctx) => {
+                            let mut context_writer = self.context_writer().await;
+                            *context_writer = ctx;
+                            drop(context_writer);
+                            match self.pulse().await {
+                                Ok(res) => {
+                                    info!("{} - [{}] Maker pulse: {:?}", type_name::<Self>(), symbol, res);
+                                },
+                                Err(e) => {
+                                    warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
+                                }
+                            };
+                            tokio::time::sleep(Duration::from_millis(2500)).await;
+                        },
+                        Err(e) => {
+                            warn!("{} - [{}] There was an error receiving maker input context update.", type_name::<Self>(), symbol);
+                        }
+                    }
+                }
+                orders_update = orders_receiver.recv() => {
+                    match orders_update {
+                        Ok(orders) => {
+                            let mut orders_writer = self.managed_orders_writer().await;
+                            *orders_writer = orders;
+                            drop(orders_writer);
+                            match self.pulse().await {
+                                Ok(res) => {
+                                    info!("{} - [{}] Maker pulse: {:?}", type_name::<Self>(), symbol, res);
+                                },
+                                Err(e) => {
+                                    warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
+                                }
+                            };
+                            tokio::time::sleep(Duration::from_millis(2500)).await;
+                        },
+                        Err(e) => {
+                            warn!("{} - [{}] There was an error receiving order manager orders update.", type_name::<Self>(), symbol);
+                        }
+                    }
+                }
+                _ = shutdown_receiver.recv() => {
+                    info!("{} - [{}] Shutdown signal received, stopping..", type_name::<Self>(), symbol);
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Gets expired orders which should be cancelled. This is according to time in force timestmap.
     fn get_expired_orders(&self, orders: &[ManagedOrder]) -> Vec<CandidateCancel> {
         let mut expired_orders = Vec::new();
@@ -79,8 +167,16 @@ pub trait Maker: Send + Sync {
             .unwrap()
             .as_secs();
 
-        for order in orders {
-            if order.max_ts + time_in_force < cur_ts {
+        for order in orders.iter() {
+            if order.max_ts < cur_ts {
+                info!(
+                    "{} - [{}] Candidate cancel - {:?} - Order Id: {} - Client Id: {}",
+                    type_name::<Self>(),
+                    self.symbol(),
+                    order.side,
+                    order.order_id,
+                    order.client_order_id
+                );
                 expired_orders.push(CandidateCancel {
                     order_id: order.order_id,
                     client_order_id: order.client_order_id,
@@ -103,7 +199,7 @@ pub trait Maker: Send + Sync {
     ) -> Vec<CandidateCancel> {
         let mut stale_orders = Vec::new();
 
-        for order in orders {
+        for order in orders.iter() {
             let equivalent_candidate = match candidate_placements
                 .iter()
                 .find(|p| order.layer == p.layer && order.side == p.side)
@@ -115,6 +211,15 @@ pub trait Maker: Send + Sync {
             if equivalent_candidate.price != order.price
                 || equivalent_candidate.base_quantity != order.base_quantity
             {
+                info!(
+                    "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
+                    type_name::<Self>(),
+                    self.symbol(),
+                    order.side,
+                    order.layer,
+                    order.order_id,
+                    order.client_order_id
+                );
                 stale_orders.push(CandidateCancel {
                     order_id: order.order_id,
                     client_order_id: order.client_order_id,
@@ -255,9 +360,9 @@ pub trait Maker: Send + Sync {
         &self,
         quote_volumes: &QuoteVolumes,
         spread_info: &SpreadInfo,
+        orders: &[ManagedOrder],
     ) -> Result<MakerPulseResult, MakerError> {
-        let order_manager = self.order_manager();
-        let orders = order_manager.get_orders().await;
+        let action_sender = self.action_sender();
         let expired_orders = self.get_expired_orders(&orders);
 
         info!(
@@ -273,14 +378,26 @@ pub trait Maker: Send + Sync {
                 self.symbol(),
                 expired_orders.len()
             );
-            match order_manager.cancel_orders(&expired_orders).await {
-                Ok(()) => (),
+
+            match action_sender.send(Action::CancelOrders(expired_orders.clone())) {
+                Ok(_) => {
+                    info!(
+                        "{} - [{}] Sucessfully sent action to order manager..",
+                        type_name::<Self>(),
+                        self.symbol(),
+                    );
+                }
                 Err(e) => {
-                    return Err(MakerError::OrderManagerError(e));
+                    return Err(MakerError::ActionSendError(e));
                 }
             };
             expired_orders.len()
         } else {
+            info!(
+                "{} - [{}] There are no expired orders.",
+                type_name::<Self>(),
+                self.symbol(),
+            );
             0
         };
 
@@ -296,10 +413,16 @@ pub trait Maker: Send + Sync {
                         self.symbol(),
                         stale_orders.len()
                     );
-                    match order_manager.cancel_orders(&expired_orders).await {
-                        Ok(()) => (),
+                    match action_sender.send(Action::CancelOrders(stale_orders.clone())) {
+                        Ok(_) => {
+                            info!(
+                                "{} - [{}] Sucessfully sent action to order manager..",
+                                type_name::<Self>(),
+                                self.symbol(),
+                            );
+                        }
                         Err(e) => {
-                            return Err(MakerError::OrderManagerError(e));
+                            return Err(MakerError::ActionSendError(e));
                         }
                     };
                     stale_orders.len()
@@ -313,14 +436,25 @@ pub trait Maker: Send + Sync {
                     self.symbol(),
                     candidate_placements.len()
                 );
-                match order_manager.place_orders(&candidate_placements).await {
-                    Ok(()) => (),
+                match action_sender.send(Action::PlaceOrders(candidate_placements.clone())) {
+                    Ok(_) => {
+                        info!(
+                            "{} - [{}] Sucessfully sent action to order manager..",
+                            type_name::<Self>(),
+                            self.symbol(),
+                        );
+                    }
                     Err(e) => {
-                        return Err(MakerError::OrderManagerError(e));
+                        return Err(MakerError::ActionSendError(e));
                     }
                 };
                 (candidate_placements.len(), num_cancelled_stale_orders)
             } else {
+                info!(
+                    "{} - [{}] There are orders on the book.",
+                    type_name::<Self>(),
+                    self.symbol(),
+                );
                 (0, 0)
             };
 
@@ -331,7 +465,7 @@ pub trait Maker: Send + Sync {
     }
 
     /// Triggers a pulse, prompting the maker to perform it's work cycle.
-    async fn pulse(&self, input: &Self::Input) -> Result<MakerPulseResult, MakerError>;
+    async fn pulse(&self) -> Result<MakerPulseResult, MakerError>;
 
     /// Gets the symbol this [`Maker`] represents.
     fn symbol(&self) -> &str;

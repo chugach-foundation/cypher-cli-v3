@@ -302,14 +302,14 @@ pub mod builder {
         type Output;
 
         /// Gets the [`AccountState`] [`Receiver`].
-        fn cache_receiver(&self) -> Receiver<AccountState>;
+        async fn cache_receiver(&self) -> Receiver<AccountState>;
 
         /// Gets the shutdown [`Receiver`].
         fn shutdown_receiver(&self) -> Receiver<bool>;
 
         /// Starts the [`ContextBuilder`],
         async fn start(&self) -> Result<(), ContextBuilderError> {
-            let mut cache_receiver = self.cache_receiver();
+            let mut cache_receiver = self.cache_receiver().await;
             let mut shutdown_receiver = self.shutdown_receiver();
             let type_name = type_name::<Self>();
             let symbol = self.symbol();
