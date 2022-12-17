@@ -7,13 +7,13 @@ use cypher_client::{
         settle_futures_funds, update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_price_to_lots, derive_account_address, derive_orders_account_address,
-        derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
-        derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
-        native_to_ui, native_to_ui_price,
+        convert_price_to_decimals, convert_price_to_lots, derive_account_address,
+        derive_orders_account_address, derive_pool_address, derive_pool_node_address,
+        derive_public_clearing_address, derive_sub_account_address, fixed_to_ui, fixed_to_ui_price,
+        get_zero_copy_account, native_to_ui, native_to_ui_price,
     },
-    CancelOrderArgs, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs, OrdersAccount,
-    SelfTradeBehavior, Side,
+    CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
+    OrdersAccount, SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, MarketContext, UserContext},
@@ -30,7 +30,7 @@ use solana_client::{
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 use std::{
     error,
-    ops::Mul,
+    ops::{Add, Mul},
     str::{from_utf8, FromStr},
     sync::Arc,
 };
@@ -63,6 +63,7 @@ pub enum FuturesSubCommand {
         side: Side,
         size: I80F48,
         price: I80F48,
+        order_type: String,
     },
 }
 
@@ -380,11 +381,21 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                     )));
                 }
             };
+            let order_type = match matches.value_of("order-type") {
+                Some(s) => s.to_string(),
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Order type not provided. Must be one of \"limit\" or \"postOnly\"."
+                            .to_string(),
+                    )));
+                }
+            };
             Ok(CliCommand::Futures(FuturesSubCommand::Place {
                 symbol: symbol.to_string(),
                 side,
                 size,
                 price,
+                order_type,
             }))
         }
         ("", None) => {
@@ -434,11 +445,6 @@ pub async fn list_futures_open_orders(
 
     let markets = ctx.futures_markets.read().await;
 
-    println!(
-        "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
-        "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
-    );
-
     for (pubkey, account) in orders_accounts.iter() {
         let orders_account = get_zero_copy_account::<OrdersAccount>(&account.data);
         let market = match markets.iter().find(|m| m.address == orders_account.market) {
@@ -450,6 +456,45 @@ pub async fn list_futures_open_orders(
         let market_name = from_utf8(&market.state.inner.market_name)
             .unwrap()
             .trim_matches(char::from(0));
+
+        println!(
+            "\n| {:^15} | {:^15} | {:^15} | {:^15} | {:^15} |",
+            "Sub Account Idx", "B. Locked", "B. Total", "Q. Locked", "Q. Total",
+        );
+
+        for i in 0..orders_account.base_token_free.len() {
+            if orders_account.base_token_free[i] != 0
+                || orders_account.base_token_locked[i] != 0
+                || orders_account.quote_token_free[i] != 0
+                || orders_account.quote_token_locked[i] != 0
+            {
+                println!(
+                    "| {:^15} | {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
+                    i,
+                    fixed_to_ui(
+                        I80F48::from(orders_account.base_token_locked[i]),
+                        market.state.inner.config.decimals
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(
+                            orders_account.base_token_locked[i] + orders_account.base_token_free[i]
+                        ),
+                        market.state.inner.config.decimals
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(orders_account.quote_token_locked[i]),
+                        QUOTE_TOKEN_DECIMALS
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(
+                            orders_account.quote_token_locked[i]
+                                + orders_account.quote_token_free[i]
+                        ),
+                        QUOTE_TOKEN_DECIMALS
+                    ),
+                );
+            }
+        }
 
         let book = match AgnosticOrderBookContext::load(
             rpc_client,
@@ -470,6 +515,16 @@ pub async fn list_futures_open_orders(
         let book = book.state;
         let open_orders = orders_account.get_orders();
 
+        println!(
+            "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
+            "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
+        );
+
+        let mut bid_base_qty = I80F48::ZERO;
+        let mut bid_quote_qty = I80F48::ZERO;
+        let mut ask_base_qty = I80F48::ZERO;
+        let mut ask_quote_qty = I80F48::ZERO;
+
         for order in open_orders {
             let book_order = if order.side == Side::Ask {
                 book.asks.iter().find(|p| p.order_id == order.order_id)
@@ -479,16 +534,26 @@ pub async fn list_futures_open_orders(
 
             if book_order.is_some() {
                 let bo = book_order.unwrap();
+                let quote_quantity =
+                    fixed_to_ui(I80F48::from(bo.quote_quantity), QUOTE_TOKEN_DECIMALS);
+                let base_quantity = fixed_to_ui(
+                    I80F48::from(bo.base_quantity),
+                    market.state.inner.config.decimals,
+                );
+                if order.side == Side::Bid {
+                    bid_base_qty = bid_base_qty.add(base_quantity);
+                    bid_quote_qty = bid_quote_qty.add(quote_quantity);
+                } else {
+                    ask_base_qty = ask_base_qty.add(base_quantity);
+                    ask_quote_qty = ask_quote_qty.add(quote_quantity);
+                }
                 println!(
                     "| {:^10} | {:^45} | {:<4} | {:>15.2} | {:>15.2} | {:>15.6} |",
                     market_name,
                     order.order_id,
                     order.side.to_string(),
-                    fixed_to_ui(
-                        I80F48::from(bo.base_quantity),
-                        market.state.inner.config.decimals
-                    ),
-                    fixed_to_ui(I80F48::from(bo.quote_quantity), QUOTE_TOKEN_DECIMALS),
+                    base_quantity,
+                    quote_quantity,
                     fixed_to_ui_price(
                         I80F48::from(bo.price),
                         market.state.inner.config.decimals,
@@ -499,6 +564,20 @@ pub async fn list_futures_open_orders(
                 println!("{} | {:?}", order.order_id, order.side);
             };
         }
+
+        println!(
+            "\n| {:^10} | {:^15} | {:^15} |",
+            "Side", "Base Qty.", "Quote Qty."
+        );
+
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Buy", bid_base_qty, bid_quote_qty
+        );
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Sell", ask_base_qty, ask_quote_qty
+        );
     }
 
     Ok(CliResult {})
@@ -981,11 +1060,21 @@ pub async fn process_futures_limit_order(
     side: Side,
     size: I80F48,
     price: I80F48,
+    order_type: &str,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
     let (public_clearing, _) = derive_public_clearing_address();
+
+    let clearing =
+        match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
+            Ok(ctx) => ctx,
+            Err(e) => {
+                eprintln!("Failed to load Clearing.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     let ctx = match CypherContext::load_futures_markets(rpc_client).await {
         Ok(ctx) => ctx,
@@ -1005,6 +1094,15 @@ pub async fn process_futures_limit_order(
                 == symbol
         })
         .unwrap();
+    let market_name = from_utf8(&market.state.inner.market_name)
+        .unwrap()
+        .trim_matches(char::from(0));
+
+    let order_type = if order_type == "limit" {
+        DerivativeOrderType::Limit
+    } else {
+        DerivativeOrderType::PostOnly
+    };
 
     let limit_price = convert_price_to_lots(
         price
@@ -1015,15 +1113,19 @@ pub async fn process_futures_limit_order(
         market.state.inner.quote_multiplier,
     );
 
-    let native_size = size
-        .mul(I80F48::from(
-            10u64.pow(market.state.inner.config.decimals as u32),
-        ))
-        .to_num();
-
     let (master_account, _) = derive_account_address(&keypair.pubkey(), 0); // TODO: change this, allow multiple accounts
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
+
+    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+        .await
+        .unwrap();
+    let sub_accounts = account
+        .sub_account_caches
+        .iter()
+        .filter(|c| c.sub_account != Pubkey::default())
+        .map(|c| c.sub_account)
+        .collect::<Vec<Pubkey>>();
 
     let encoded_pool_name = encode_string("USDC");
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
@@ -1045,33 +1147,87 @@ pub async fn process_futures_limit_order(
         }
     };
 
+    let user_fee_tier = clearing.get_fee_tier(account.fee_tier);
+    println!(
+        "(debug) User Fee Tier: {} | Maker: {} | Taker: {} | Rebate: {}",
+        user_fee_tier.tier,
+        user_fee_tier.maker_bps,
+        user_fee_tier.taker_bps,
+        user_fee_tier.rebate_bps
+    );
+
+    let max_base_qty = size
+        .mul(I80F48::from(
+            10u64.pow(market.state.inner.config.decimals as u32),
+        ))
+        .to_num();
+    let max_quote_qty = if order_type == DerivativeOrderType::PostOnly {
+        max_base_qty * limit_price
+    } else {
+        let max_quote_qty_without_fee = max_base_qty * limit_price;
+        (max_quote_qty_without_fee * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+    };
+
+    println!(
+        "(debug) Price: {} | Size: {} | Notional: {}",
+        limit_price, max_base_qty, max_quote_qty
+    );
+    println!(
+        "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
+        market_name,
+        fixed_to_ui(
+            I80F48::from(
+                convert_price_to_decimals(
+                    limit_price,
+                    market.state.inner.base_multiplier,
+                    10u64.pow(market.state.inner.config.decimals as u32),
+                    market.state.inner.quote_multiplier
+                )
+            ),
+            QUOTE_TOKEN_DECIMALS
+        ),
+        fixed_to_ui(
+            I80F48::from(max_base_qty),
+            market.state.inner.config.decimals
+        ),
+        fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
+    );
+
     let args = NewDerivativeOrderArgs {
         side,
         limit_price,
-        max_base_qty: native_size,
-        max_quote_qty: native_size * limit_price,
+        max_base_qty,
+        max_quote_qty,
         order_type: DerivativeOrderType::PostOnly,
         self_trade_behavior: SelfTradeBehavior::CancelProvide,
         client_order_id: 0,
         limit: u16::MAX,
         max_ts: u64::MAX,
     };
-    let ixs = vec![new_futures_order(
-        &public_clearing,
-        &cache_account::id(),
-        &master_account,
-        &sub_account,
-        &market.address,
-        &orders_account,
-        &market.state.inner.price_history,
-        &market.state.inner.orderbook,
-        &market.state.inner.event_queue,
-        &market.state.inner.bids,
-        &market.state.inner.asks,
-        &quote_pool_node,
-        &keypair.pubkey(),
-        args,
-    )];
+    let ixs = vec![
+        update_account_margin_ix(
+            &cache_account::id(),
+            &master_account,
+            &keypair.pubkey(),
+            &sub_accounts,
+        ),
+        new_futures_order(
+            &public_clearing,
+            &cache_account::id(),
+            &master_account,
+            &sub_account,
+            &market.address,
+            &orders_account,
+            &market.state.inner.price_history,
+            &market.state.inner.orderbook,
+            &market.state.inner.event_queue,
+            &market.state.inner.bids,
+            &market.state.inner.asks,
+            &quote_pool_node,
+            &keypair.pubkey(),
+            args,
+        ),
+    ];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
         Ok(s) => s,

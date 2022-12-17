@@ -10,7 +10,7 @@ use cypher_client::{
         derive_orders_account_address, derive_pool_address, derive_pool_node_address,
         derive_pool_node_vault_signer_address, derive_public_clearing_address,
         derive_spot_open_orders_address, derive_sub_account_address, fixed_to_ui,
-        fixed_to_ui_price, gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals,
+        fixed_to_ui_price, gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals, convert_pc_to_decimals,
     },
     Clearing, CypherAccount, NewSpotOrderArgs, OrderType, SelfTradeBehavior, Side,
 };
@@ -432,7 +432,10 @@ pub async fn process_spot_limit_order(
             I80F48::from(convert_coin_to_decimals(max_coin_qty, market_ctx.state.coin_lot_size)),
             asset_pool.state.config.decimals
         ),
-        fixed_to_ui(I80F48::from(max_native_pc_qty_including_fees), QUOTE_TOKEN_DECIMALS)
+        fixed_to_ui(
+            I80F48::from(convert_pc_to_decimals(max_native_pc_qty_including_fees, market_ctx.state.pc_lot_size)),
+            QUOTE_TOKEN_DECIMALS
+        )
     );
 
     let vault_signer = if side == Side::Bid {

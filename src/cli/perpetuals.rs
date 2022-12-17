@@ -7,9 +7,10 @@ use cypher_client::{
         update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_price_to_lots, derive_account_address, derive_orders_account_address,
-        derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
-        derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
+        convert_price_to_decimals, convert_price_to_lots, derive_account_address,
+        derive_orders_account_address, derive_pool_address, derive_pool_node_address,
+        derive_public_clearing_address, derive_sub_account_address, fixed_to_ui, fixed_to_ui_price,
+        get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
     OrdersAccount, SelfTradeBehavior, Side,
@@ -23,7 +24,7 @@ use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcF
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
-    ops::Mul,
+    ops::{Add, Mul},
     str::{from_utf8, FromStr},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -452,11 +453,6 @@ pub async fn list_perps_open_orders(
 
     let markets = ctx.perp_markets.read().await;
 
-    println!(
-        "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
-        "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
-    );
-
     for (pubkey, account) in orders_accounts.iter() {
         let orders_account = get_zero_copy_account::<OrdersAccount>(&account.data);
         let market = match markets.iter().find(|m| m.address == orders_account.market) {
@@ -468,6 +464,45 @@ pub async fn list_perps_open_orders(
         let market_name = from_utf8(&market.state.inner.market_name)
             .unwrap()
             .trim_matches(char::from(0));
+
+        println!(
+            "\n| {:^15} | {:^15} | {:^15} | {:^15} | {:^15} |",
+            "Sub Account Idx", "B. Locked", "B. Total", "Q. Locked", "Q. Total",
+        );
+
+        for i in 0..orders_account.base_token_free.len() {
+            if orders_account.base_token_free[i] != 0
+                || orders_account.base_token_locked[i] != 0
+                || orders_account.quote_token_free[i] != 0
+                || orders_account.quote_token_locked[i] != 0
+            {
+                println!(
+                    "| {:^15} | {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
+                    i,
+                    fixed_to_ui(
+                        I80F48::from(orders_account.base_token_locked[i]),
+                        market.state.inner.config.decimals
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(
+                            orders_account.base_token_locked[i] + orders_account.base_token_free[i]
+                        ),
+                        market.state.inner.config.decimals
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(orders_account.quote_token_locked[i]),
+                        QUOTE_TOKEN_DECIMALS
+                    ),
+                    fixed_to_ui(
+                        I80F48::from(
+                            orders_account.quote_token_locked[i]
+                                + orders_account.quote_token_free[i]
+                        ),
+                        QUOTE_TOKEN_DECIMALS
+                    ),
+                );
+            }
+        }
 
         let book = match AgnosticOrderBookContext::load(
             rpc_client,
@@ -488,6 +523,16 @@ pub async fn list_perps_open_orders(
         let book = book.state;
         let open_orders = orders_account.get_orders();
 
+        println!(
+            "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
+            "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
+        );
+
+        let mut bid_base_qty = I80F48::ZERO;
+        let mut bid_quote_qty = I80F48::ZERO;
+        let mut ask_base_qty = I80F48::ZERO;
+        let mut ask_quote_qty = I80F48::ZERO;
+
         for order in open_orders {
             let book_order = if order.side == Side::Ask {
                 book.asks.iter().find(|p| p.order_id == order.order_id)
@@ -497,16 +542,26 @@ pub async fn list_perps_open_orders(
 
             if book_order.is_some() {
                 let bo = book_order.unwrap();
+                let quote_quantity =
+                    fixed_to_ui(I80F48::from(bo.quote_quantity), QUOTE_TOKEN_DECIMALS);
+                let base_quantity = fixed_to_ui(
+                    I80F48::from(bo.base_quantity),
+                    market.state.inner.config.decimals,
+                );
+                if order.side == Side::Bid {
+                    bid_base_qty = bid_base_qty.add(base_quantity);
+                    bid_quote_qty = bid_quote_qty.add(quote_quantity);
+                } else {
+                    ask_base_qty = ask_base_qty.add(base_quantity);
+                    ask_quote_qty = ask_quote_qty.add(quote_quantity);
+                }
                 println!(
                     "| {:^10} | {:^45} | {:<4} | {:>15.2} | {:>15.2} | {:>15.6} |",
                     market_name,
                     order.order_id,
                     order.side.to_string(),
-                    fixed_to_ui(
-                        I80F48::from(bo.base_quantity),
-                        market.state.inner.config.decimals
-                    ),
-                    fixed_to_ui(I80F48::from(bo.quote_quantity), QUOTE_TOKEN_DECIMALS),
+                    base_quantity,
+                    quote_quantity,
                     fixed_to_ui_price(
                         I80F48::from(bo.price),
                         market.state.inner.config.decimals,
@@ -517,6 +572,20 @@ pub async fn list_perps_open_orders(
                 println!("{} | {:?}", order.order_id, order.side);
             };
         }
+
+        println!(
+            "\n| {:^10} | {:^15} | {:^15} |",
+            "Side", "Base Qty.", "Quote Qty."
+        );
+
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Buy", bid_base_qty, bid_quote_qty
+        );
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Sell", ask_base_qty, ask_quote_qty
+        );
     }
 
     Ok(CliResult {})
@@ -1136,9 +1205,15 @@ pub async fn process_perps_limit_order(
     println!(
         "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
-        fixed_to_ui_price(
-            I80F48::from(limit_price),
-            market.state.inner.config.decimals,
+        fixed_to_ui(
+            I80F48::from(
+                convert_price_to_decimals(
+                    limit_price,
+                    market.state.inner.base_multiplier,
+                    10u64.pow(market.state.inner.config.decimals as u32),
+                    market.state.inner.quote_multiplier
+                )
+            ),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(

@@ -220,7 +220,18 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
                 side,
                 size,
                 price,
-            } => process_futures_limit_order(config, symbol.as_str(), *side, *size, *price).await,
+                order_type,
+            } => {
+                process_futures_limit_order(
+                    config,
+                    symbol.as_str(),
+                    *side,
+                    *size,
+                    *price,
+                    order_type.as_str(),
+                )
+                .await
+            }
         },
         CliCommand::Perpetuals(perps_command) => match perps_command {
             PerpetualsSubCommand::Orders => list_perps_open_orders(config).await,
