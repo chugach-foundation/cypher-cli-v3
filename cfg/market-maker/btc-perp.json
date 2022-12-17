@@ -2,12 +2,12 @@
     "accountNumber": 0,
     "subAccountNumber": 0,
     "makerConfig": {
-        "maxQuote": 50,
-        "spread": 20,
-        "layers": 5,
-        "spacingBps": 20,
+        "maxQuote": 25,
+        "spread": 15,
+        "layers": 6,
+        "spacingBps": 15,
         "timeInForce": 20,
-        "symbol": "SOL-PERP"
+        "symbol": "BTC-PERP"
     },
     "inventoryConfig": {
         "expBase": 2,
@@ -15,6 +15,6 @@
         "shapeDenominator": 100000
     },
     "hedgerConfig": {
-        "symbol": "SOL1!"
+        "symbol": "BTC1!"
     }
 }

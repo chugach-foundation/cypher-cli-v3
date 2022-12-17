@@ -53,18 +53,14 @@ impl OperationContext {
         open_orders: &dyn GenericOpenOrders,
         event_queue: &dyn GenericEventQueue,
     ) -> Self {
-        let now = Instant::now();
-        let s = Self {
+        Self {
             orderbook: OrderBook {
                 bids: orderbook.get_bids(),
                 asks: orderbook.get_asks(),
             },
             open_orders: open_orders.get_open_orders(orderbook),
             fills: event_queue.get_fills(),
-        };
-        let elapsed = now.elapsed();
-        info!("[OPCTX] Build elapsed time: {:.2?}", elapsed.as_nanos());
-        s
+        }
     }
 }
 

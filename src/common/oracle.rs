@@ -99,7 +99,7 @@ pub trait OracleProvider: Send + Sync {
         let type_name = type_name::<Self>();
         let symbol = self.symbol();
 
-        info!("{} - [{}] Starting context builder..", type_name, symbol);
+        info!("{} - [{}] Starting oracle provider..", type_name, symbol);
 
         loop {
             tokio::select! {
@@ -111,7 +111,7 @@ pub trait OracleProvider: Send + Sync {
                                     match self.send(output).await {
                                         Ok(()) => (),
                                         Err(e) => {
-                                            warn!("{} - [{}] There was an error sending operation context update: {:?}", type_name, symbol, e.to_string());
+                                            warn!("{} - [{}] There was an error sending oracle price update: {:?}", type_name, symbol, e.to_string());
                                         }
                                     };
                                 },

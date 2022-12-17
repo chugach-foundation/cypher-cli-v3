@@ -98,16 +98,31 @@ impl ContextManager for CypherExecutionContextManager {
         // let's hold off on sending an execution context update until
         // 1. oracle price has been received
         if oracle_info.price == I80F48::ZERO {
+            info!(
+                "{} - [{}] Oracle price unset - Awaiting to send execution context..",
+                type_name::<Self>(),
+                self.symbol
+            );
             return Ok(());
         }
 
         // 2. account context exist
         if global_context.user.account_ctx.state.authority == Pubkey::default() {
+            info!(
+                "{} - [{}] User account unset - Awaiting to send execution context..",
+                type_name::<Self>(),
+                self.symbol
+            );
             return Ok(());
         }
 
         // 3. sub accounts have been loaded
         if global_context.user.sub_account_ctxs.is_empty() {
+            info!(
+                "{} - [{}] User sub accounts unset - Awaiting to send execution context..",
+                type_name::<Self>(),
+                self.symbol
+            );
             return Ok(());
         }
 

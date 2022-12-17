@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use fixed::types::I80F48;
 use log::info;
 use std::any::type_name;
 use std::sync::Arc;
@@ -107,12 +108,22 @@ impl Maker for PerpsMaker {
 
     async fn pulse(&self) -> Result<MakerPulseResult, MakerError> {
         let ctx = self.context_reader().await;
-        let orders = self.managed_orders_reader().await;
         let inventory_mngr = self.inventory_manager();
 
-        let spread_info = inventory_mngr.get_spread(ctx.oracle_info.price);
         info!(
-            "{} - [{}] Oracle Price: {} - Best bid: {} - Best ask: {}",
+            "{} - [{}] Oracle Source: {:?} - Price: {}",
+            type_name::<Self>(),
+            self.symbol,
+            ctx.oracle_info.source,
+            ctx.oracle_info.price,
+        );
+
+        let spread_info = inventory_mngr.get_spread(ctx.oracle_info.price);
+        if spread_info.oracle_price == I80F48::ZERO {
+            return Ok(MakerPulseResult::default());
+        }
+        info!(
+            "{} - [{}] Mid Price: {} - Best Bid: {} - Best Ask: {}",
             type_name::<Self>(),
             self.symbol,
             spread_info.oracle_price,
@@ -129,6 +140,12 @@ impl Maker for PerpsMaker {
             quote_volumes.bid_size,
             quote_volumes.ask_size,
         );
+        if quote_volumes.bid_size == I80F48::ZERO && quote_volumes.ask_size == I80F48::ZERO {
+            return Ok(MakerPulseResult::default());
+        }
+
+        let orders = self.managed_orders_reader().await;
+
         self.update_orders(&quote_volumes, &spread_info, &orders)
             .await
     }

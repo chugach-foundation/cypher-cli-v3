@@ -161,7 +161,6 @@ pub trait Maker: Send + Sync {
     /// Gets expired orders which should be cancelled. This is according to time in force timestmap.
     fn get_expired_orders(&self, orders: &[ManagedOrder]) -> Vec<CandidateCancel> {
         let mut expired_orders = Vec::new();
-        let time_in_force = self.time_in_force();
         let cur_ts = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -200,33 +199,52 @@ pub trait Maker: Send + Sync {
         let mut stale_orders = Vec::new();
 
         for order in orders.iter() {
-            let equivalent_candidate = match candidate_placements
+            match candidate_placements
                 .iter()
                 .find(|p| order.layer == p.layer && order.side == p.side)
             {
-                Some(o) => o,
-                None => continue,
+                Some(equivalent_candidate) => {
+                    // we will simply check the size and price of the order
+                    if equivalent_candidate.price != order.price
+                        || equivalent_candidate.base_quantity != order.base_quantity
+                    {
+                        info!(
+                            "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
+                            type_name::<Self>(),
+                            self.symbol(),
+                            order.side,
+                            order.layer,
+                            order.order_id,
+                            order.client_order_id
+                        );
+                        stale_orders.push(CandidateCancel {
+                            order_id: order.order_id,
+                            client_order_id: order.client_order_id,
+                            side: order.side,
+                            layer: order.layer,
+                        })
+                    }
+                }
+                None => {
+                    // if this order does not have an equivalent candidate we are going to assume that this order should not be here
+                    info!(
+                        "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
+                        type_name::<Self>(),
+                        self.symbol(),
+                        order.side,
+                        order.layer,
+                        order.order_id,
+                        order.client_order_id
+                    );
+                    stale_orders.push(CandidateCancel {
+                        order_id: order.order_id,
+                        client_order_id: order.client_order_id,
+                        side: order.side,
+                        layer: order.layer,
+                    });
+                    ()
+                }
             };
-            // we will simply check the size and price of the order
-            if equivalent_candidate.price != order.price
-                || equivalent_candidate.base_quantity != order.base_quantity
-            {
-                info!(
-                    "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
-                    type_name::<Self>(),
-                    self.symbol(),
-                    order.side,
-                    order.layer,
-                    order.order_id,
-                    order.client_order_id
-                );
-                stale_orders.push(CandidateCancel {
-                    order_id: order.order_id,
-                    client_order_id: order.client_order_id,
-                    side: order.side,
-                    layer: order.layer,
-                })
-            }
         }
 
         stale_orders
@@ -355,13 +373,8 @@ pub trait Maker: Send + Sync {
         new_orders
     }
 
-    /// Updates the maker orders.
-    async fn update_orders(
-        &self,
-        quote_volumes: &QuoteVolumes,
-        spread_info: &SpreadInfo,
-        orders: &[ManagedOrder],
-    ) -> Result<MakerPulseResult, MakerError> {
+    /// Cancels expired orders according to their time in force.
+    async fn cancel_expired_orders(&self, orders: &[ManagedOrder]) -> Result<usize, MakerError> {
         let action_sender = self.action_sender();
         let expired_orders = self.get_expired_orders(&orders);
 
@@ -401,65 +414,170 @@ pub trait Maker: Send + Sync {
             0
         };
 
-        let (num_new_orders, num_cancelled_orders) =
-            if orders.is_empty() || !expired_orders.is_empty() {
-                let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
-                // here we get these new candidate placements and compare to see if any of existing orders are stale
-                let stale_orders = self.get_stale_orders(&orders, &candidate_placements);
-                let num_cancelled_stale_orders = if !stale_orders.is_empty() {
+        Ok(num_expired_orders)
+    }
+
+    /// Places new orders.
+    async fn place_new_orders(
+        &self,
+        quote_volumes: &QuoteVolumes,
+        spread_info: &SpreadInfo,
+    ) -> Result<usize, MakerError> {
+        let action_sender = self.action_sender();
+        let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
+
+        info!(
+            "{} - [{}] Submitting {} new orders.",
+            type_name::<Self>(),
+            self.symbol(),
+            candidate_placements.len()
+        );
+        match action_sender.send(Action::PlaceOrders(candidate_placements.clone())) {
+            Ok(_) => {
+                info!(
+                    "{} - [{}] Sucessfully sent action to order manager..",
+                    type_name::<Self>(),
+                    self.symbol(),
+                );
+            }
+            Err(e) => {
+                return Err(MakerError::ActionSendError(e));
+            }
+        };
+
+        Ok(candidate_placements.len())
+    }
+
+    /// Filters candidate placements.
+    fn filter_candidate_placements(
+        &self,
+        candidate_placements: &[CandidatePlacement],
+        candidate_cancels: &[CandidateCancel],
+    ) -> Result<Vec<CandidatePlacement>, MakerError> {
+        let mut final_candidates = Vec::new();
+
+        // iterate over the candidate placements and see if there is a candidate cancel for the same layer
+        // if there is one, we will actually want to submit a new order for that layer
+        for candidate_placement in candidate_placements.iter() {
+            match candidate_cancels.iter().find(|candidate_cancel| {
+                candidate_cancel.layer == candidate_placement.layer
+                    && candidate_cancel.side == candidate_placement.side
+            }) {
+                Some(c) => {
                     info!(
-                        "{} - [{}] Cancelling {} stale orders.",
+                        "{} - [{}] Final candidate - {:?} - {:.5} @ {:.5}",
                         type_name::<Self>(),
                         self.symbol(),
-                        stale_orders.len()
+                        candidate_placement.side,
+                        candidate_placement.base_quantity,
+                        candidate_placement.price,
                     );
-                    match action_sender.send(Action::CancelOrders(stale_orders.clone())) {
-                        Ok(_) => {
-                            info!(
-                                "{} - [{}] Sucessfully sent action to order manager..",
-                                type_name::<Self>(),
-                                self.symbol(),
-                            );
-                        }
-                        Err(e) => {
-                            return Err(MakerError::ActionSendError(e));
-                        }
-                    };
-                    stale_orders.len()
-                } else {
-                    0
-                };
+                    final_candidates.push(candidate_placement.clone());
+                }
+                None => continue,
+            }
+        }
 
-                info!(
-                    "{} - [{}] Submitting {} new orders.",
-                    type_name::<Self>(),
-                    self.symbol(),
-                    candidate_placements.len()
-                );
-                match action_sender.send(Action::PlaceOrders(candidate_placements.clone())) {
-                    Ok(_) => {
-                        info!(
-                            "{} - [{}] Sucessfully sent action to order manager..",
-                            type_name::<Self>(),
-                            self.symbol(),
-                        );
-                    }
-                    Err(e) => {
-                        return Err(MakerError::ActionSendError(e));
-                    }
-                };
-                (candidate_placements.len(), num_cancelled_stale_orders)
-            } else {
-                info!(
-                    "{} - [{}] There are orders on the book.",
-                    type_name::<Self>(),
-                    self.symbol(),
-                );
-                (0, 0)
+        Ok(final_candidates)
+    }
+
+    /// Updates the maker orders.
+    async fn update_orders(
+        &self,
+        quote_volumes: &QuoteVolumes,
+        spread_info: &SpreadInfo,
+        orders: &[ManagedOrder],
+    ) -> Result<MakerPulseResult, MakerError> {
+        let action_sender = self.action_sender();
+
+        /// if we have no orders we need to submit new ones
+        if orders.is_empty() {
+            match self.place_new_orders(quote_volumes, spread_info).await {
+                Ok(num_new_orders) => {
+                    return Ok(MakerPulseResult {
+                        num_new_orders,
+                        num_cancelled_orders: 0,
+                    });
+                }
+                Err(e) => {
+                    return Err(e);
+                }
+            }
+        }
+
+        /// otherwise we have a few things to do
+        /// 1. first we will see if there are expired orders
+        let num_expired_canceled = match self.cancel_expired_orders(orders).await {
+            Ok(num_canceled) => num_canceled,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
+        /// 2. secondly, we get what would be our newest desired orders
+        let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
+
+        /// then we see if any of the existing orders are stale
+        let stale_orders = self.get_stale_orders(&orders, &candidate_placements);
+        let num_cancelled_stale_orders = if !stale_orders.is_empty() {
+            info!(
+                "{} - [{}] Cancelling {} stale orders.",
+                type_name::<Self>(),
+                self.symbol(),
+                stale_orders.len()
+            );
+            match action_sender.send(Action::CancelOrders(stale_orders.clone())) {
+                Ok(_) => {
+                    info!(
+                        "{} - [{}] Sucessfully sent action to order manager..",
+                        type_name::<Self>(),
+                        self.symbol(),
+                    );
+                }
+                Err(e) => {
+                    return Err(MakerError::ActionSendError(e));
+                }
+            };
+            stale_orders.len()
+        } else {
+            0
+        };
+
+        let final_candidates =
+            match self.filter_candidate_placements(&candidate_placements, &stale_orders) {
+                Ok(a) => a,
+                Err(e) => {
+                    return Err(e);
+                }
             };
 
+        let num_new_orders = if !final_candidates.is_empty() {
+            info!(
+                "{} - [{}] Submitting {} final candidates.",
+                type_name::<Self>(),
+                self.symbol(),
+                final_candidates.len()
+            );
+            match action_sender.send(Action::PlaceOrders(final_candidates.clone())) {
+                Ok(_) => {
+                    info!(
+                        "{} - [{}] Sucessfully sent action to order manager..",
+                        type_name::<Self>(),
+                        self.symbol(),
+                    );
+                }
+                Err(e) => {
+                    return Err(MakerError::ActionSendError(e));
+                }
+            };
+            final_candidates.len()
+        } else {
+            0
+        };
+
+        /// only after checking for stale orders do we see which we want to submit
         Ok(MakerPulseResult {
-            num_cancelled_orders: num_expired_orders + num_cancelled_orders,
+            num_cancelled_orders: num_expired_canceled + num_cancelled_stale_orders,
             num_new_orders,
         })
     }

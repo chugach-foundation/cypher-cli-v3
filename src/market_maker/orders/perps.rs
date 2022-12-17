@@ -3,7 +3,7 @@ use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
     instructions::{cancel_perp_order, new_perp_order},
-    utils::convert_price_to_lots,
+    utils::{convert_coin_to_lots, convert_pc_to_lots, convert_price_to_lots},
     CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, SelfTradeBehavior,
 };
 use cypher_utils::contexts::Order;
