@@ -9,19 +9,18 @@ use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::common::context::{ExecutionContext, GlobalContext, OperationContext};
 use crate::common::info::PerpMarketInfo;
 use crate::common::inventory::InventoryManager;
-use crate::common::oracle::OracleInfo;
-use crate::common::orders::{Action, ManagedOrder, OrderManager};
-use crate::common::strategy::{Strategy, StrategyError};
-
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
+use crate::common::oracle::OracleInfo;
+use crate::common::orders::{Action, ManagedOrder, OrderManager, OrdersInfo};
+use crate::common::strategy::{Strategy, StrategyError};
 
 pub struct PerpsMaker {
     inventory_mngr: Arc<dyn InventoryManager<Input = GlobalContext>>,
-    managed_orders: RwLock<Vec<ManagedOrder>>,
+    managed_orders: RwLock<OrdersInfo>,
     context: RwLock<ExecutionContext>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<ExecutionContext>>,
-    orders_sender: Arc<Sender<Vec<ManagedOrder>>>,
+    orders_sender: Arc<Sender<OrdersInfo>>,
     action_sender: Arc<Sender<Action>>,
     order_layers: usize,
     layer_spacing: u16,
@@ -34,7 +33,7 @@ impl PerpsMaker {
         inventory_mngr: Arc<dyn InventoryManager<Input = GlobalContext>>,
         shutdown_sender: Arc<Sender<bool>>,
         context_sender: Arc<Sender<ExecutionContext>>,
-        orders_sender: Arc<Sender<Vec<ManagedOrder>>>,
+        orders_sender: Arc<Sender<OrdersInfo>>,
         action_sender: Arc<Sender<Action>>,
         order_layers: usize,
         layer_spacing: u16,
@@ -51,7 +50,7 @@ impl PerpsMaker {
             context_sender,
             orders_sender,
             action_sender,
-            managed_orders: RwLock::new(Vec::new()),
+            managed_orders: RwLock::new(OrdersInfo::default()),
             context: RwLock::new(ExecutionContext::default()),
         }
     }
@@ -78,7 +77,7 @@ impl Maker for PerpsMaker {
         self.action_sender.clone()
     }
 
-    fn orders_receiver(&self) -> Receiver<Vec<ManagedOrder>> {
+    fn orders_receiver(&self) -> Receiver<OrdersInfo> {
         self.orders_sender.subscribe()
     }
 
@@ -90,11 +89,11 @@ impl Maker for PerpsMaker {
         self.shutdown_sender.subscribe()
     }
 
-    async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>> {
+    async fn managed_orders_reader(&self) -> RwLockReadGuard<OrdersInfo> {
         self.managed_orders.read().await
     }
 
-    async fn managed_orders_writer(&self) -> RwLockWriteGuard<Vec<ManagedOrder>> {
+    async fn managed_orders_writer(&self) -> RwLockWriteGuard<OrdersInfo> {
         self.managed_orders.write().await
     }
 

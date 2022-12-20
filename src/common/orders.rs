@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cypher_client::Side;
-use cypher_utils::{contexts::Order, utils::send_transactions};
+use cypher_utils::contexts::Order;
 use fixed::types::I80F48;
 use log::{info, warn};
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
@@ -14,6 +14,8 @@ use tokio::sync::{
     broadcast::{error::SendError, Receiver, Sender},
     RwLockReadGuard, RwLockWriteGuard,
 };
+
+use crate::utils::transactions::{send_cancels, send_placements};
 
 use super::context::{builder::ContextBuilder, OrdersContext};
 
@@ -83,12 +85,21 @@ pub struct ManagedOrder {
     pub layer: usize,
 }
 
+#[derive(Default, Debug, Clone, PartialEq)]
+pub struct OrdersInfo {
+    pub open_orders: Vec<ManagedOrder>,
+    pub inflight_cancels: Vec<InflightCancel>,
+    pub inflight_orders: Vec<ManagedOrder>,
+}
+
 #[derive(Debug, Error)]
 pub enum OrderManagerError {
     #[error(transparent)]
     ClientError(#[from] ClientError),
     #[error("Send error: {:?}", self)]
-    OrdersSendError(SendError<Vec<ManagedOrder>>),
+    OrdersSendError(SendError<OrdersInfo>),
+    #[error("Insufficient data")]
+    InsufficientData,
 }
 
 /// Actions that the [`OrderManager`] can perform.
@@ -136,7 +147,7 @@ pub trait OrderManager: Send + Sync {
     fn shutdown_receiver(&self) -> Receiver<bool>;
 
     /// Gets the [`Sender`] for the existing orders.
-    fn sender(&self) -> Arc<Sender<Vec<ManagedOrder>>>;
+    fn sender(&self) -> Arc<Sender<OrdersInfo>>;
 
     /// Gets the managed orders reader.
     async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>>;
@@ -251,7 +262,10 @@ pub trait OrderManager: Send + Sync {
         let symbol = self.symbol();
         let mut inflight_cancels = self.inflight_cancels_writer().await;
         let mut inflight_cancels_to_remove: Vec<InflightCancel> = Vec::new();
-        let ctx_open_orders = ctx.get_open_orders();
+        let ctx_open_orders = match ctx.get_open_orders() {
+            Some(o) => o,
+            None => return Err(OrderManagerError::InsufficientData),
+        };
 
         info!(
             "{} - [{}] There are {} inflight cancels and {} orders on the book.",
@@ -324,7 +338,10 @@ pub trait OrderManager: Send + Sync {
         let symbol = self.symbol();
         let mut inflight_orders = self.inflight_orders_writer().await;
         let mut inflight_orders_to_remove: Vec<ManagedOrder> = Vec::new();
-        let ctx_open_orders = ctx.get_open_orders();
+        let ctx_open_orders = match ctx.get_open_orders() {
+            Some(o) => o,
+            None => return Err(OrderManagerError::InsufficientData),
+        };
 
         for inflight_order in inflight_orders.iter() {
             // check if any of our "inflight orders" have now been confirmed
@@ -409,7 +426,10 @@ pub trait OrderManager: Send + Sync {
         }
 
         let mut managed_orders = self.managed_orders_writer().await;
-        let ctx_open_orders = ctx.get_open_orders();
+        let ctx_open_orders = match ctx.get_open_orders() {
+            Some(o) => o,
+            None => return Err(OrderManagerError::InsufficientData),
+        };
 
         // if this happens we will assume this is after our start-up
         // we'll take any existing on-chain order and add them to managed orders so they end up getting cancelled
@@ -432,7 +452,7 @@ pub trait OrderManager: Send + Sync {
                     client_order_id: order.client_order_id,
                     order_id: order.order_id,
                     side: order.side,
-                    layer: usize::MIN,
+                    layer: usize::MAX,
                 });
             }
         }
@@ -489,20 +509,58 @@ pub trait OrderManager: Send + Sync {
             let signer = self.signer();
             let rpc_client = self.rpc_client();
             let (ixs, managed_orders) = self.build_new_order_ixs(&filtered_placements).await;
-            match send_transactions(&rpc_client, ixs, &signer, false).await {
+            match send_placements(
+                &rpc_client,
+                filtered_placements.clone(),
+                ixs,
+                &signer,
+                false,
+            )
+            .await
+            {
                 Ok(sigs) => {
                     // add these submitted orders to the inflight orders tracker
                     let mut inflight_orders = self.inflight_orders_writer().await;
-                    inflight_orders.extend(managed_orders);
-                    drop(inflight_orders);
                     for sig in sigs.iter() {
-                        info!(
-                            "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
-                            type_name::<Self>(),
-                            self.symbol(),
-                            sig
-                        );
+                        if sig.signature.is_some() {
+                            info!(
+                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
+                                type_name::<Self>(),
+                                self.symbol(),
+                                sig.signature.unwrap()
+                            );
+                            let mut candidates_submitted = Vec::new();
+                            for candidate in sig.candidates.iter() {
+                                match managed_orders.iter().find(|o| {
+                                    o.layer == candidate.layer && o.side == candidate.side
+                                }) {
+                                    Some(order) => {
+                                        info!(
+                                            "{} - [{}] Sucessfully submitted order: {:?}.",
+                                            type_name::<Self>(),
+                                            self.symbol(),
+                                            candidate
+                                        );
+                                        candidates_submitted.push(order.clone());
+                                    }
+                                    None => {
+                                        continue;
+                                    }
+                                }
+                            }
+                            inflight_orders.extend(candidates_submitted);
+                        } else {
+                            for order in sig.candidates.iter() {
+                                warn!(
+                                    "{} - [{}] Failed to submit order: {:?}",
+                                    type_name::<Self>(),
+                                    self.symbol(),
+                                    order
+                                );
+                            }
+                        }
                     }
+                    drop(inflight_orders);
                     match self.send_update().await {
                         Ok(()) => {
                             info!(
@@ -576,24 +634,54 @@ pub trait OrderManager: Send + Sync {
             let signer = self.signer();
             let rpc_client = self.rpc_client();
             let ixs = self.build_cancel_order_ixs(&filtered_cancels).await;
-            match send_transactions(&rpc_client, ixs, &signer, false).await {
+            match send_cancels(&rpc_client, filtered_cancels.clone(), ixs, &signer, false).await {
                 Ok(sigs) => {
                     // add these cancels to the inflight cancels tracker
                     let mut inflight_cancels = self.inflight_cancels_writer().await;
-                    inflight_cancels.extend(order_cancels.iter().map(|o| InflightCancel {
-                        side: o.side,
-                        order_id: o.order_id,
-                        client_order_id: o.client_order_id,
-                    }));
-                    drop(inflight_cancels);
                     for sig in sigs.iter() {
-                        info!(
-                            "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
-                            type_name::<Self>(),
-                            self.symbol(),
-                            sig
-                        );
+                        if sig.signature.is_some() {
+                            info!(
+                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
+                                type_name::<Self>(),
+                                self.symbol(),
+                                sig.signature.unwrap()
+                            );
+                            let mut candidates_submitted = Vec::new();
+                            for candidate in sig.candidates.iter() {
+                                match filtered_cancels.iter().find(|o| {
+                                    o.layer == candidate.layer && o.side == candidate.side
+                                }) {
+                                    Some(_) => {
+                                        info!(
+                                            "{} - [{}] Sucessfully submitted cancel: {:?}.",
+                                            type_name::<Self>(),
+                                            self.symbol(),
+                                            candidate
+                                        );
+                                        candidates_submitted.push(InflightCancel {
+                                            side: candidate.side,
+                                            order_id: candidate.order_id,
+                                            client_order_id: candidate.client_order_id,
+                                        });
+                                    }
+                                    None => {
+                                        continue;
+                                    }
+                                }
+                            }
+                            inflight_cancels.extend(candidates_submitted);
+                        } else {
+                            for order in sig.candidates.iter() {
+                                warn!(
+                                    "{} - [{}] Failed to submit cancel: {:?}",
+                                    type_name::<Self>(),
+                                    self.symbol(),
+                                    order
+                                );
+                            }
+                        }
                     }
+                    drop(inflight_cancels);
                     match self.send_update().await {
                         Ok(()) => {
                             info!(
@@ -624,15 +712,13 @@ pub trait OrderManager: Send + Sync {
     async fn build_cancel_order_ixs(&self, order_cancels: &[CandidateCancel]) -> Vec<Instruction>;
 
     /// Gets confirmed and inflight orders.
-    async fn get_orders(&self) -> Vec<ManagedOrder> {
+    async fn get_orders(&self) -> OrdersInfo {
         let inflight_cancels = self.inflight_cancels_reader().await;
         let managed_orders = self.managed_orders_reader().await;
         let inflight_orders = self.inflight_orders_reader().await;
         let open_orders = self.open_orders_reader().await;
 
         let mut orders = Vec::new();
-
-        orders.extend(inflight_orders.to_vec());
 
         for order in managed_orders.iter() {
             match inflight_cancels.iter().find(|c| {
@@ -662,7 +748,11 @@ pub trait OrderManager: Send + Sync {
             }
         }
 
-        orders
+        OrdersInfo {
+            open_orders: orders,
+            inflight_orders: inflight_orders.to_vec(),
+            inflight_cancels: inflight_cancels.to_vec(),
+        }
     }
 
     /// The symbol that this [`OrderManager`] represents.

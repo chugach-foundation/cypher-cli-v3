@@ -24,6 +24,7 @@ use super::{
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
     orders::{
         Action, CandidateCancel, CandidatePlacement, ManagedOrder, OrderManager, OrderManagerError,
+        OrdersInfo,
     },
 };
 
@@ -60,7 +61,7 @@ pub trait Maker: Send + Sync {
     fn context_receiver(&self) -> Receiver<Self::Input>;
 
     /// Gets the [`Receiver`] for the existing orders.
-    fn orders_receiver(&self) -> Receiver<Vec<ManagedOrder>>;
+    fn orders_receiver(&self) -> Receiver<OrdersInfo>;
 
     /// Gets the [`Receiver`] for the existing orders.
     fn shutdown_receiver(&self) -> Receiver<bool>;
@@ -90,10 +91,10 @@ pub trait Maker: Send + Sync {
     async fn context_writer(&self) -> RwLockWriteGuard<Self::Input>;
 
     /// Gets the managed orders reader.
-    async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>>;
+    async fn managed_orders_reader(&self) -> RwLockReadGuard<OrdersInfo>;
 
     /// Gets the managed orders writer.
-    async fn managed_orders_writer(&self) -> RwLockWriteGuard<Vec<ManagedOrder>>;
+    async fn managed_orders_writer(&self) -> RwLockWriteGuard<OrdersInfo>;
 
     /// Starts the [`OrderManager`],
     async fn start(&self) -> Result<(), MakerError> {
@@ -120,7 +121,6 @@ pub trait Maker: Send + Sync {
                                     warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
                                 }
                             };
-                            tokio::time::sleep(Duration::from_millis(2500)).await;
                         },
                         Err(e) => {
                             warn!("{} - [{}] There was an error receiving maker input context update.", type_name::<Self>(), symbol);
@@ -141,7 +141,6 @@ pub trait Maker: Send + Sync {
                                     warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
                                 }
                             };
-                            tokio::time::sleep(Duration::from_millis(2500)).await;
                         },
                         Err(e) => {
                             warn!("{} - [{}] There was an error receiving order manager orders update.", type_name::<Self>(), symbol);
@@ -167,7 +166,7 @@ pub trait Maker: Send + Sync {
             .as_secs();
 
         for order in orders.iter() {
-            if order.max_ts < cur_ts {
+            if order.max_ts < cur_ts || order.layer == usize::MAX {
                 info!(
                     "{} - [{}] Candidate cancel - {:?} - Order Id: {} - Client Id: {}",
                     type_name::<Self>(),
@@ -486,12 +485,21 @@ pub trait Maker: Send + Sync {
         &self,
         quote_volumes: &QuoteVolumes,
         spread_info: &SpreadInfo,
-        orders: &[ManagedOrder],
+        orders: &OrdersInfo,
     ) -> Result<MakerPulseResult, MakerError> {
         let action_sender = self.action_sender();
 
+        if orders.open_orders.is_empty()
+            && (!orders.inflight_orders.is_empty() || !orders.inflight_cancels.is_empty())
+        {
+            return Ok(MakerPulseResult {
+                num_new_orders: 0,
+                num_cancelled_orders: 0,
+            });
+        }
+
         /// if we have no orders we need to submit new ones
-        if orders.is_empty() {
+        if orders.open_orders.is_empty() {
             match self.place_new_orders(quote_volumes, spread_info).await {
                 Ok(num_new_orders) => {
                     return Ok(MakerPulseResult {
@@ -507,7 +515,7 @@ pub trait Maker: Send + Sync {
 
         /// otherwise we have a few things to do
         /// 1. first we will see if there are expired orders
-        let num_expired_canceled = match self.cancel_expired_orders(orders).await {
+        let num_expired_canceled = match self.cancel_expired_orders(&orders.open_orders).await {
             Ok(num_canceled) => num_canceled,
             Err(e) => {
                 return Err(e);
@@ -518,7 +526,7 @@ pub trait Maker: Send + Sync {
         let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
 
         /// then we see if any of the existing orders are stale
-        let stale_orders = self.get_stale_orders(&orders, &candidate_placements);
+        let stale_orders = self.get_stale_orders(&orders.open_orders, &candidate_placements);
         let num_cancelled_stale_orders = if !stale_orders.is_empty() {
             info!(
                 "{} - [{}] Cancelling {} stale orders.",

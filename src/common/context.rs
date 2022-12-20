@@ -42,7 +42,7 @@ pub struct OperationContext {
     /// The latest order book snapshot.
     pub orderbook: OrderBook,
     /// Orders open in the Cypher or Serum Orders Accounts.
-    pub open_orders: Vec<Order>,
+    pub open_orders: Option<Vec<Order>>,
     /// Recent fills that have occurred.
     pub fills: Vec<Fill>,
 }
@@ -94,15 +94,18 @@ pub struct ExecutionContext {
 
 pub trait OrdersContext {
     /// Gets the open orders.
-    fn get_open_orders(&self) -> &[Order];
+    fn get_open_orders(&self) -> Option<&[Order]>;
 
     /// Gets the orderbook.
     fn get_orderbook(&self) -> &OrderBook;
 }
 
 impl OrdersContext for OperationContext {
-    fn get_open_orders(&self) -> &[Order] {
-        &self.open_orders
+    fn get_open_orders(&self) -> Option<&[Order]> {
+        match &self.open_orders {
+            Some(o) => Some(&o),
+            None => None,
+        }
     }
 
     fn get_orderbook(&self) -> &OrderBook {

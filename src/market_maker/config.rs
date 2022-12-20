@@ -33,7 +33,7 @@ use crate::{
         inventory::InventoryManager,
         maker::{Maker, MakerPulseResult},
         oracle::{OracleInfo, OracleProvider},
-        orders::{Action, ManagedOrder, OrderManager},
+        orders::{Action, ManagedOrder, OrderManager, OrdersInfo},
         strategy::Strategy,
     },
     context::{
@@ -372,7 +372,7 @@ pub async fn get_context_info(
 pub async fn get_maker_from_config(
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<ExecutionContext>>,
-    orders_sender: Arc<Sender<Vec<ManagedOrder>>>,
+    orders_sender: Arc<Sender<OrdersInfo>>,
     action_sender: Arc<Sender<Action>>,
     cypher_ctx: &CypherContext,
     context_info: &ContextInfo,

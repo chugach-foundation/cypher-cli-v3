@@ -29,7 +29,7 @@ use crate::common::{
     info::{FuturesMarketInfo, MarketMetadata, UserInfo},
     orders::{
         Action, CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrderManager,
-        OrderManagerError,
+        OrderManagerError, OrdersInfo,
     },
 };
 
@@ -39,7 +39,7 @@ pub struct FuturesOrderManager {
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<OperationContext>>,
     action_sender: Arc<Sender<Action>>,
-    update_sender: Arc<Sender<Vec<ManagedOrder>>>,
+    update_sender: Arc<Sender<OrdersInfo>>,
     client_order_id: RwLock<u64>,
     managed_orders: RwLock<Vec<ManagedOrder>>,
     open_orders: RwLock<Vec<Order>>,
@@ -75,7 +75,7 @@ impl FuturesOrderManager {
             time_in_force,
             symbol,
             action_sender: Arc::new(channel::<Action>(u16::MAX as usize).0),
-            update_sender: Arc::new(channel::<Vec<ManagedOrder>>(u16::MAX as usize).0),
+            update_sender: Arc::new(channel::<OrdersInfo>(u16::MAX as usize).0),
             client_order_id: RwLock::new(u64::default()),
             managed_orders: RwLock::new(Vec::new()),
             open_orders: RwLock::new(Vec::new()),
@@ -117,7 +117,7 @@ impl OrderManager for FuturesOrderManager {
         self.shutdown_sender.subscribe()
     }
 
-    fn sender(&self) -> Arc<Sender<Vec<ManagedOrder>>> {
+    fn sender(&self) -> Arc<Sender<OrdersInfo>> {
         self.update_sender.clone()
     }
 
@@ -205,7 +205,7 @@ impl OrderManager for FuturesOrderManager {
                     max_base_qty,
                     max_quote_qty,
                     order_type: DerivativeOrderType::PostOnly,
-                    self_trade_behavior: SelfTradeBehavior::AbortTransaction,
+                    self_trade_behavior: SelfTradeBehavior::CancelProvide,
                     client_order_id: *client_order_id,
                     limit: u16::MAX,
                     max_ts,
