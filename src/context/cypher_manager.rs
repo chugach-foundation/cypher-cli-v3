@@ -15,7 +15,7 @@ use crate::common::{
         ExecutionContext, GlobalContext, OperationContext,
     },
     oracle::{OracleInfo, OracleProvider},
-    orders::{ManagedOrder, OrderManager},
+    orders::ManagedOrder,
 };
 
 use super::builders::global::GlobalContextBuilder;

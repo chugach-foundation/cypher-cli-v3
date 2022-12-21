@@ -405,10 +405,10 @@ pub async fn process_spot_limit_order(
     let max_coin_qty = convert_coin_to_lots(max_coin_qty, market_ctx.state.coin_lot_size);
 
     let max_native_pc_qty_including_fees = if order_type == OrderType::PostOnly {
-        max_coin_qty * limit_price
+        max_coin_qty * limit_price * market_ctx.state.pc_lot_size
     } else {
         let max_quote_qty_without_fee = max_coin_qty * limit_price;
-        (max_quote_qty_without_fee * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
     };
 
     println!(
@@ -433,7 +433,7 @@ pub async fn process_spot_limit_order(
             asset_pool.state.config.decimals
         ),
         fixed_to_ui(
-            I80F48::from(convert_pc_to_decimals(max_native_pc_qty_including_fees, market_ctx.state.pc_lot_size)),
+            I80F48::from(max_native_pc_qty_including_fees),
             QUOTE_TOKEN_DECIMALS
         )
     );

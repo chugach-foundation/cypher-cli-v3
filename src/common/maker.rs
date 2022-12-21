@@ -3,7 +3,8 @@ use cypher_client::Side;
 use cypher_utils::contexts::Order;
 use fixed::types::I80F48;
 use log::{info, warn};
-use solana_sdk::instruction::Instruction;
+use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
+use solana_sdk::{instruction::Instruction, signature::Keypair};
 use std::{
     any::type_name,
     ops::{Add, Div, Mul, Sub},
@@ -16,16 +17,17 @@ use tokio::sync::{
     RwLockReadGuard, RwLockWriteGuard,
 };
 
-use crate::market_maker::constants::BPS_UNIT;
+use crate::{
+    common::orders::InflightCancel,
+    market_maker::constants::BPS_UNIT,
+    utils::transactions::{send_cancels, send_placements},
+};
 
 use super::{
     context::{ExecutionContext, OrdersContext},
     info::{Accounts, UserInfo},
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
-    orders::{
-        Action, CandidateCancel, CandidatePlacement, ManagedOrder, OrderManager, OrderManagerError,
-        OrdersInfo,
-    },
+    orders::{CandidateCancel, CandidatePlacement, ManagedOrder, OrdersInfo},
 };
 
 /// Represents the result of a maker's pulse.
@@ -40,19 +42,31 @@ pub struct MakerPulseResult {
 #[derive(Debug, Error)]
 pub enum MakerError {
     #[error(transparent)]
-    OrderManagerError(#[from] OrderManagerError),
-    #[error("Action send error: {:?}", self)]
-    ActionSendError(SendError<Action>),
+    ClientError(#[from] ClientError),
+    #[error("Insufficient data.")]
+    InsufficientData,
 }
 
 /// Defines shared functionality that different makers should implement
 #[async_trait]
 pub trait Maker: Send + Sync {
     /// The input type for the maker.
-    type Input: Clone + Send + Sync;
+    type Input: Clone + Send + Sync + OrdersContext;
 
     /// The input type for the inventory manager.
     type InventoryManagerInput: Clone + Send + Sync;
+
+    /// Gets the [`RpcClient`].
+    ///
+    /// OBS: If there is a desire to turn this entire thing somewhat agnostic, might be worthwhile
+    /// switching this for an `ExchangeAdapter` trait which abstracts away the transaction building and submission.
+    fn rpc_client(&self) -> Arc<RpcClient>;
+
+    /// Gets the [`Keypair`].
+    ///
+    /// OBS: If there is a desire to turn this entire thing somewhat agnostic, might be worthwhile
+    /// switching this for an `ExchangeAdapter` trait which abstracts away the transaction building and submission.
+    fn signer(&self) -> Arc<Keypair>;
 
     /// Gets the inventory manager for the maker.
     fn inventory_manager(&self) -> Arc<dyn InventoryManager<Input = Self::InventoryManagerInput>>;
@@ -61,13 +75,7 @@ pub trait Maker: Send + Sync {
     fn context_receiver(&self) -> Receiver<Self::Input>;
 
     /// Gets the [`Receiver`] for the existing orders.
-    fn orders_receiver(&self) -> Receiver<OrdersInfo>;
-
-    /// Gets the [`Receiver`] for the existing orders.
     fn shutdown_receiver(&self) -> Receiver<bool>;
-
-    /// Gets the [`Sender`] for the actions.
-    fn action_sender(&self) -> Arc<Sender<Action>>;
 
     /// Gets the order layer count.
     ///
@@ -91,15 +99,32 @@ pub trait Maker: Send + Sync {
     async fn context_writer(&self) -> RwLockWriteGuard<Self::Input>;
 
     /// Gets the managed orders reader.
-    async fn managed_orders_reader(&self) -> RwLockReadGuard<OrdersInfo>;
+    async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>>;
 
     /// Gets the managed orders writer.
-    async fn managed_orders_writer(&self) -> RwLockWriteGuard<OrdersInfo>;
+    async fn managed_orders_writer(&self) -> RwLockWriteGuard<Vec<ManagedOrder>>;
+
+    /// Gets the open orders reader.
+    async fn open_orders_reader(&self) -> RwLockReadGuard<Vec<Order>>;
+
+    /// Gets the open orders writer.
+    async fn open_orders_writer(&self) -> RwLockWriteGuard<Vec<Order>>;
+
+    /// Gets the inflight order placements reader.
+    async fn inflight_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>>;
+
+    /// Gets the inflight order placements writer.
+    async fn inflight_orders_writer(&self) -> RwLockWriteGuard<Vec<ManagedOrder>>;
+
+    /// Gets the inflight order cancels reader.
+    async fn inflight_cancels_reader(&self) -> RwLockReadGuard<Vec<InflightCancel>>;
+
+    /// Gets the inflight order cancels writer.
+    async fn inflight_cancels_writer(&self) -> RwLockWriteGuard<Vec<InflightCancel>>;
 
     /// Starts the [`OrderManager`],
     async fn start(&self) -> Result<(), MakerError> {
         let mut context_receiver = self.context_receiver();
-        let mut orders_receiver = self.orders_receiver();
         let mut shutdown_receiver = self.shutdown_receiver();
         let symbol = self.symbol();
 
@@ -110,6 +135,14 @@ pub trait Maker: Send + Sync {
                 ctx_update = context_receiver.recv() => {
                     match ctx_update {
                         Ok(ctx) => {
+                            match self.process_update(&ctx).await {
+                                Ok(()) => {
+                                    info!("{} - [{}] Sucessfully processed order manager update.", type_name::<Self>(), symbol);
+                                },
+                                Err(e) => {
+                                    warn!("{} - [{}] There was an error during order manager update: {:?}", type_name::<Self>(), symbol, e.to_string());
+                                }
+                            }
                             let mut context_writer = self.context_writer().await;
                             *context_writer = ctx;
                             drop(context_writer);
@@ -124,26 +157,6 @@ pub trait Maker: Send + Sync {
                         },
                         Err(e) => {
                             warn!("{} - [{}] There was an error receiving maker input context update.", type_name::<Self>(), symbol);
-                        }
-                    }
-                }
-                orders_update = orders_receiver.recv() => {
-                    match orders_update {
-                        Ok(orders) => {
-                            let mut orders_writer = self.managed_orders_writer().await;
-                            *orders_writer = orders;
-                            drop(orders_writer);
-                            match self.pulse().await {
-                                Ok(res) => {
-                                    info!("{} - [{}] Maker pulse: {:?}", type_name::<Self>(), symbol, res);
-                                },
-                                Err(e) => {
-                                    warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
-                                }
-                            };
-                        },
-                        Err(e) => {
-                            warn!("{} - [{}] There was an error receiving order manager orders update.", type_name::<Self>(), symbol);
                         }
                     }
                 }
@@ -342,7 +355,7 @@ pub trait Maker: Send + Sync {
 
         for i in 1..num_layers + 1 {
             let order_size =
-                self.get_order_size(num_layers, i, quote_volumes.bid_size, prev_order_size);
+                self.get_order_size(num_layers, i, quote_volumes.ask_size, prev_order_size);
             let order_price = if i == 1 {
                 spread_info.ask
             } else {
@@ -374,7 +387,6 @@ pub trait Maker: Send + Sync {
 
     /// Cancels expired orders according to their time in force.
     async fn cancel_expired_orders(&self, orders: &[ManagedOrder]) -> Result<usize, MakerError> {
-        let action_sender = self.action_sender();
         let expired_orders = self.get_expired_orders(&orders);
 
         info!(
@@ -391,16 +403,16 @@ pub trait Maker: Send + Sync {
                 expired_orders.len()
             );
 
-            match action_sender.send(Action::CancelOrders(expired_orders.clone())) {
+            match self.cancel_orders(&expired_orders).await {
                 Ok(_) => {
                     info!(
-                        "{} - [{}] Sucessfully sent action to order manager..",
+                        "{} - [{}] Sucessfully cancelled orders..",
                         type_name::<Self>(),
                         self.symbol(),
                     );
                 }
                 Err(e) => {
-                    return Err(MakerError::ActionSendError(e));
+                    return Err(e);
                 }
             };
             expired_orders.len()
@@ -422,7 +434,6 @@ pub trait Maker: Send + Sync {
         quote_volumes: &QuoteVolumes,
         spread_info: &SpreadInfo,
     ) -> Result<usize, MakerError> {
-        let action_sender = self.action_sender();
         let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
 
         info!(
@@ -431,16 +442,16 @@ pub trait Maker: Send + Sync {
             self.symbol(),
             candidate_placements.len()
         );
-        match action_sender.send(Action::PlaceOrders(candidate_placements.clone())) {
+        match self.place_orders(&candidate_placements).await {
             Ok(_) => {
                 info!(
-                    "{} - [{}] Sucessfully sent action to order manager..",
+                    "{} - [{}] Sucessfully placed new orders..",
                     type_name::<Self>(),
                     self.symbol(),
                 );
             }
             Err(e) => {
-                return Err(MakerError::ActionSendError(e));
+                return Err(e);
             }
         };
 
@@ -487,8 +498,6 @@ pub trait Maker: Send + Sync {
         spread_info: &SpreadInfo,
         orders: &OrdersInfo,
     ) -> Result<MakerPulseResult, MakerError> {
-        let action_sender = self.action_sender();
-
         if orders.open_orders.is_empty()
             && (!orders.inflight_orders.is_empty() || !orders.inflight_cancels.is_empty())
         {
@@ -534,16 +543,16 @@ pub trait Maker: Send + Sync {
                 self.symbol(),
                 stale_orders.len()
             );
-            match action_sender.send(Action::CancelOrders(stale_orders.clone())) {
+            match self.cancel_orders(&stale_orders).await {
                 Ok(_) => {
                     info!(
-                        "{} - [{}] Sucessfully sent action to order manager..",
+                        "{} - [{}] Sucessfully cancelled orders..",
                         type_name::<Self>(),
                         self.symbol(),
                     );
                 }
                 Err(e) => {
-                    return Err(MakerError::ActionSendError(e));
+                    return Err(e);
                 }
             };
             stale_orders.len()
@@ -566,16 +575,16 @@ pub trait Maker: Send + Sync {
                 self.symbol(),
                 final_candidates.len()
             );
-            match action_sender.send(Action::PlaceOrders(final_candidates.clone())) {
+            match self.place_orders(&final_candidates).await {
                 Ok(_) => {
                     info!(
-                        "{} - [{}] Sucessfully sent action to order manager..",
+                        "{} - [{}] Sucessfully placed orders..",
                         type_name::<Self>(),
                         self.symbol(),
                     );
                 }
                 Err(e) => {
-                    return Err(MakerError::ActionSendError(e));
+                    return Err(e);
                 }
             };
             final_candidates.len()
@@ -588,6 +597,511 @@ pub trait Maker: Send + Sync {
             num_cancelled_orders: num_expired_canceled + num_cancelled_stale_orders,
             num_new_orders,
         })
+    }
+
+    async fn update_inflight_cancels(&self, ctx: &Self::Input) -> Result<(), MakerError> {
+        let symbol = self.symbol();
+        let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let mut inflight_cancels = self.inflight_cancels_writer().await;
+        let mut inflight_cancels_to_remove: Vec<InflightCancel> = Vec::new();
+        let ctx_open_orders = ctx.get_open_orders();
+        info!(
+            "{} - [{}] There are {} inflight cancels and {} orders on the book.",
+            type_name::<Self>(),
+            symbol,
+            inflight_cancels.len(),
+            ctx_open_orders.len()
+        );
+
+        for inflight_cancel in inflight_cancels.iter_mut() {
+            // check if we still find any orders that match our "inflight cancels"
+            // if so, we'll ignore them, otherwise we can consider them removed
+            match ctx_open_orders.iter().find(|p| {
+                p.client_order_id == inflight_cancel.client_order_id
+                    || p.order_id == inflight_cancel.order_id
+            }) {
+                Some(_) => {}
+                None => {
+                    if !inflight_cancels_to_remove.contains(&inflight_cancel) {
+                        info!(
+                            "{} - [{}] Inflight cancel confirmed. Side: {:?} - Order ID: {} - Client Order ID: {}",
+                            type_name::<Self>(),
+                            symbol,
+                            inflight_cancel.side,
+                            inflight_cancel.order_id,
+                            inflight_cancel.client_order_id
+                        );
+                        inflight_cancels_to_remove.push(inflight_cancel.clone());
+                    }
+                }
+            }
+            // we have to admit the possibility that something might have gone wrong with an update
+            // or an inflight cancel might not have materialized and it can get us stuck in a loop
+            // TODO: instead of hardcoded value try changing this to a configurable param
+            if inflight_cancel.submitted_at + 15 < cur_ts.as_secs() {
+                inflight_cancels_to_remove.push(inflight_cancel.clone());
+            }
+        }
+
+        info!(
+            "{} - [{}] Found {} inflight cancels that have been confirmed..",
+            type_name::<Self>(),
+            symbol,
+            inflight_cancels_to_remove.len(),
+        );
+
+        if !inflight_cancels_to_remove.is_empty() {
+            let mut managed_orders = self.managed_orders_writer().await;
+            // remove these confirmed cancels from the ones we are tracking
+            for order in inflight_cancels_to_remove.iter() {
+                let order_idx = inflight_cancels
+                    .iter()
+                    .position(|p| {
+                        p.client_order_id == order.client_order_id
+                            || p.order_id == order.order_id && p.side == order.side
+                    })
+                    .unwrap();
+                inflight_cancels.remove(order_idx);
+
+                match managed_orders.iter().position(|p| {
+                    p.client_order_id == order.client_order_id
+                        || p.order_id == order.order_id && p.side == order.side
+                }) {
+                    Some(i) => {
+                        managed_orders.remove(i);
+                    }
+                    None => continue,
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn update_inflight_orders(&self, ctx: &Self::Input) -> Result<(), MakerError> {
+        let symbol = self.symbol();
+        let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+        let mut inflight_orders = self.inflight_orders_writer().await;
+        let mut inflight_orders_to_move: Vec<ManagedOrder> = Vec::new();
+        let mut inflight_orders_to_remove: Vec<ManagedOrder> = Vec::new();
+        let ctx_open_orders = ctx.get_open_orders();
+
+        for inflight_order in inflight_orders.iter() {
+            // check if any of our "inflight orders" have now been confirmed
+            // and if so, we should remove them from our tracking
+            match ctx_open_orders
+                .iter()
+                .find(|p| p.client_order_id == inflight_order.client_order_id)
+            {
+                Some(o) => {
+                    let mut order = inflight_order.clone();
+                    order.order_id = o.order_id;
+                    if !inflight_orders_to_move.contains(&order) {
+                        info!(
+                            "{} - [{}] Inflight order confirmed. Side: {:?} - Price: {} - Size: {} - Layer: {} - Order ID: {} - Client Order ID: {}",
+                            type_name::<Self>(),
+                            symbol,
+                            inflight_order.side,
+                            inflight_order.price,
+                            inflight_order.base_quantity,
+                            inflight_order.layer,
+                            inflight_order.order_id,
+                            inflight_order.client_order_id,
+                        );
+                        inflight_orders_to_move.push(order);
+                    }
+                }
+                None => {}
+            };
+            // we have to admit the possibility that something might have gone wrong with an update
+            // or an inflight order might not have materialized and it can get us stuck in a loop
+            // TODO: instead of hardcoded value try changing this to a configurable param
+            if inflight_order.submitted_at + 15 < cur_ts.as_secs() {
+                inflight_orders_to_remove.push(inflight_order.clone());
+            }
+        }
+
+        if !inflight_orders_to_move.is_empty() {
+            info!(
+                "{} - [{}] Found {} inflight orders that have been confirmed..",
+                type_name::<Self>(),
+                symbol,
+                inflight_orders_to_move.len(),
+            );
+            let mut managed_orders = self.managed_orders_writer().await;
+
+            // remove these confirmed orders from the ones we are tracking
+            for order in inflight_orders_to_move.iter() {
+                let order_idx = inflight_orders
+                    .iter()
+                    .position(|p| p.client_order_id == order.client_order_id)
+                    .unwrap();
+                inflight_orders.remove(order_idx);
+                managed_orders.push(order.clone());
+            }
+        }
+
+        if !inflight_orders_to_remove.is_empty() {
+            info!(
+                "{} - [{}] Found {} inflight orders that have taken too long to confirm..",
+                type_name::<Self>(),
+                symbol,
+                inflight_orders_to_remove.len(),
+            );
+            let mut managed_orders = self.managed_orders_writer().await;
+
+            // remove these confirmed orders from the ones we are tracking
+            for order in inflight_orders_to_remove.iter() {
+                let order_idx = inflight_orders
+                    .iter()
+                    .position(|p| p.client_order_id == order.client_order_id)
+                    .unwrap();
+                inflight_orders.remove(order_idx);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Processes an update of the order manager.
+    async fn process_update(&self, ctx: &Self::Input) -> Result<(), MakerError> {
+        let symbol = self.symbol();
+
+        // update our tracking of inflight cancels
+        match self.update_inflight_cancels(ctx).await {
+            Ok(()) => (),
+            Err(e) => {
+                warn!(
+                    "{} - [{}] There was an error updating inflight order cancels: {:?}",
+                    type_name::<Self>(),
+                    symbol,
+                    e.to_string()
+                )
+            }
+        }
+        // update our tracking of inflight orders
+        match self.update_inflight_orders(ctx).await {
+            Ok(()) => (),
+            Err(e) => {
+                warn!(
+                    "{} - [{}] There was an error updating inflight order placements: {:?}",
+                    type_name::<Self>(),
+                    symbol,
+                    e.to_string()
+                )
+            }
+        }
+
+        let mut managed_orders = self.managed_orders_writer().await;
+        let ctx_open_orders = ctx.get_open_orders();
+
+        // if this happens we will assume this is after our start-up
+        // we'll take any existing on-chain order and add them to managed orders so they end up getting cancelled
+        if managed_orders.is_empty() {
+            info!(
+                "{} - [{}] There are no managed orders, adding {} confirmed open orders..",
+                type_name::<Self>(),
+                symbol,
+                ctx_open_orders.len()
+            );
+            for order in ctx_open_orders.iter() {
+                managed_orders.push(ManagedOrder {
+                    price_lots: order.price,
+                    base_quantity_lots: order.base_quantity,
+                    quote_quantity_lots: order.quote_quantity,
+                    price: I80F48::ZERO,
+                    base_quantity: I80F48::ZERO,
+                    max_quote_quantity: I80F48::ZERO,
+                    max_ts: u64::MIN,
+                    submitted_at: u64::MIN,
+                    client_order_id: order.client_order_id,
+                    order_id: order.order_id,
+                    side: order.side,
+                    layer: usize::MAX,
+                });
+            }
+        } else {
+            // otherwise, let's see if we have any order in our state that doesn't seem to exist on-chain
+            let mut order_idxs = Vec::new();
+            for (idx, order) in managed_orders.iter().enumerate() {
+                match ctx_open_orders.iter().position(|o| {
+                    (o.order_id == order.order_id || o.client_order_id == order.client_order_id)
+                        && o.side == order.side
+                }) {
+                    Some(_) => (),
+                    None => order_idxs.push(idx),
+                }
+            }
+
+            order_idxs.sort_by(|a, b| b.cmp(a));
+
+            for idx in order_idxs.iter() {
+                managed_orders.remove(*idx);
+            }
+        }
+
+        let mut open_orders = self.open_orders_writer().await;
+        *open_orders = ctx_open_orders.to_vec();
+
+        info!(
+            "{} - [{}] There are {} confirmed open orders..",
+            type_name::<Self>(),
+            symbol,
+            ctx_open_orders.len()
+        );
+
+        Ok(())
+    }
+
+    async fn check_inflight_orders(
+        &self,
+        order_placements: &[CandidatePlacement],
+    ) -> Vec<CandidatePlacement> {
+        let inflight_orders_reader = self.inflight_orders_reader().await;
+        let mut filtered_candidates = Vec::new();
+
+        for op in order_placements.iter() {
+            match inflight_orders_reader.iter().find(|inflight_order| {
+                op.layer == inflight_order.layer && op.side == inflight_order.side
+            }) {
+                Some(_) => (),
+                None => {
+                    filtered_candidates.push(op.clone());
+                }
+            }
+        }
+
+        info!(
+            "{} - [{}] Filtered {} duplicate order placements.",
+            type_name::<Self>(),
+            self.symbol(),
+            order_placements.len() - filtered_candidates.len()
+        );
+
+        filtered_candidates
+    }
+
+    /// Submits new orders, adding them to the inflight orders tracker.
+    async fn place_orders(
+        &self,
+        order_placements: &[CandidatePlacement],
+    ) -> Result<(), MakerError> {
+        let filtered_placements = self.check_inflight_orders(order_placements).await;
+
+        if !filtered_placements.is_empty() {
+            let signer = self.signer();
+            let rpc_client = self.rpc_client();
+            let (ixs, managed_orders) = self.build_new_order_ixs(&filtered_placements).await;
+            match send_placements(
+                &rpc_client,
+                filtered_placements.clone(),
+                ixs,
+                &signer,
+                false,
+            )
+            .await
+            {
+                Ok(sigs) => {
+                    // add these submitted orders to the inflight orders tracker
+                    let mut inflight_orders = self.inflight_orders_writer().await;
+                    for sig in sigs.iter() {
+                        if sig.signature.is_some() {
+                            info!(
+                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
+                                type_name::<Self>(),
+                                self.symbol(),
+                                sig.signature.unwrap()
+                            );
+                            let mut candidates_submitted = Vec::new();
+                            for candidate in sig.candidates.iter() {
+                                match managed_orders.iter().find(|o| {
+                                    o.layer == candidate.layer && o.side == candidate.side
+                                }) {
+                                    Some(order) => {
+                                        info!(
+                                            "{} - [{}] Sucessfully submitted order: {:?}.",
+                                            type_name::<Self>(),
+                                            self.symbol(),
+                                            candidate
+                                        );
+                                        candidates_submitted.push(order.clone());
+                                    }
+                                    None => {
+                                        continue;
+                                    }
+                                }
+                            }
+                            inflight_orders.extend(candidates_submitted);
+                        } else {
+                            for order in sig.candidates.iter() {
+                                warn!(
+                                    "{} - [{}] Failed to submit order: {:?}",
+                                    type_name::<Self>(),
+                                    self.symbol(),
+                                    order
+                                );
+                            }
+                        }
+                    }
+                    drop(inflight_orders);
+                    Ok(())
+                }
+                Err(e) => Err(MakerError::ClientError(e)),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Builds cancel order instructions from the given [`CandidatePlacement`]s.
+    async fn build_new_order_ixs(
+        &self,
+        order_placements: &[CandidatePlacement],
+    ) -> (Vec<Instruction>, Vec<ManagedOrder>);
+
+    async fn check_inflight_cancels(
+        &self,
+        order_cancels: &[CandidateCancel],
+    ) -> Vec<CandidateCancel> {
+        let inflight_cancels = self.inflight_cancels_reader().await;
+        let mut filtered_candidates = Vec::new();
+
+        for oc in order_cancels.iter() {
+            match inflight_cancels.iter().find(|inflight_cancel| {
+                oc.side == inflight_cancel.side
+                    && (oc.client_order_id == inflight_cancel.client_order_id
+                        || oc.order_id == inflight_cancel.order_id)
+            }) {
+                Some(_) => (),
+                None => {
+                    filtered_candidates.push(oc.clone());
+                }
+            }
+        }
+
+        info!(
+            "{} - [{}] Filtered {} duplicate order cancels.",
+            type_name::<Self>(),
+            self.symbol(),
+            order_cancels.len() - filtered_candidates.len()
+        );
+
+        filtered_candidates
+    }
+
+    /// Submits new orders, adding them to the inflight orders tracker.
+    async fn cancel_orders(&self, order_cancels: &[CandidateCancel]) -> Result<(), MakerError> {
+        let filtered_cancels = self.check_inflight_cancels(order_cancels).await;
+
+        if !filtered_cancels.is_empty() {
+            let signer = self.signer();
+            let rpc_client = self.rpc_client();
+            let ixs = self.build_cancel_order_ixs(&filtered_cancels).await;
+            match send_cancels(&rpc_client, filtered_cancels.clone(), ixs, &signer, false).await {
+                Ok(sigs) => {
+                    // add these cancels to the inflight cancels tracker
+                    let mut inflight_cancels = self.inflight_cancels_writer().await;
+                    let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
+                    for sig in sigs.iter() {
+                        if sig.signature.is_some() {
+                            info!(
+                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
+                                type_name::<Self>(),
+                                self.symbol(),
+                                sig.signature.unwrap()
+                            );
+                            let mut candidates_submitted = Vec::new();
+                            for candidate in sig.candidates.iter() {
+                                match filtered_cancels.iter().find(|o| {
+                                    o.layer == candidate.layer && o.side == candidate.side
+                                }) {
+                                    Some(_) => {
+                                        info!(
+                                            "{} - [{}] Sucessfully submitted cancel: {:?}.",
+                                            type_name::<Self>(),
+                                            self.symbol(),
+                                            candidate
+                                        );
+                                        candidates_submitted.push(InflightCancel {
+                                            side: candidate.side,
+                                            order_id: candidate.order_id,
+                                            client_order_id: candidate.client_order_id,
+                                            submitted_at: cur_ts.as_secs(),
+                                        });
+                                    }
+                                    None => {
+                                        continue;
+                                    }
+                                }
+                            }
+                            inflight_cancels.extend(candidates_submitted);
+                        } else {
+                            for order in sig.candidates.iter() {
+                                warn!(
+                                    "{} - [{}] Failed to submit cancel: {:?}",
+                                    type_name::<Self>(),
+                                    self.symbol(),
+                                    order
+                                );
+                            }
+                        }
+                    }
+                    drop(inflight_cancels);
+                    Ok(())
+                }
+                Err(e) => Err(MakerError::ClientError(e)),
+            }
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Builds cancel order instructions from the given [`CandidateCancel`]s.
+    async fn build_cancel_order_ixs(&self, order_cancels: &[CandidateCancel]) -> Vec<Instruction>;
+
+    /// Gets confirmed and inflight orders.
+    async fn get_orders(&self) -> OrdersInfo {
+        let inflight_cancels = self.inflight_cancels_reader().await;
+        let managed_orders = self.managed_orders_reader().await;
+        let inflight_orders = self.inflight_orders_reader().await;
+        let open_orders = self.open_orders_reader().await;
+
+        let mut orders = Vec::new();
+
+        for order in managed_orders.iter() {
+            match inflight_cancels.iter().find(|c| {
+                c.order_id == order.order_id || c.client_order_id == order.client_order_id
+            }) {
+                Some(_) => (),
+                None => orders.push(order.clone()),
+            }
+        }
+
+        for order in open_orders.iter() {
+            match orders.iter().find(|o| o.order_id == order.order_id) {
+                Some(_) => (),
+                None => orders.push(ManagedOrder {
+                    price_lots: order.price,
+                    base_quantity_lots: order.base_quantity,
+                    quote_quantity_lots: order.quote_quantity,
+                    price: I80F48::ZERO,
+                    base_quantity: I80F48::ZERO,
+                    max_quote_quantity: I80F48::ZERO,
+                    max_ts: order.max_ts,
+                    submitted_at: u64::MIN,
+                    client_order_id: order.client_order_id,
+                    order_id: order.order_id,
+                    side: order.side,
+                    ..Default::default()
+                }),
+            }
+        }
+
+        OrdersInfo {
+            open_orders: orders,
+            inflight_orders: inflight_orders.to_vec(),
+            inflight_cancels: inflight_cancels.to_vec(),
+        }
     }
 
     /// Triggers a pulse, prompting the maker to perform it's work cycle.

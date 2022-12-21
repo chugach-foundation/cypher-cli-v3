@@ -33,7 +33,7 @@ use crate::{
         inventory::InventoryManager,
         maker::{Maker, MakerPulseResult},
         oracle::{OracleInfo, OracleProvider},
-        orders::{Action, ManagedOrder, OrderManager, OrdersInfo},
+        orders::{ManagedOrder, OrdersInfo},
         strategy::Strategy,
     },
     context::{
@@ -48,7 +48,6 @@ use crate::{
         hedging::{futures::FuturesHedger, perps::PerpsHedger, spot::SpotHedger},
         inventory::ShapeFunctionInventoryManager,
         making::{futures::FuturesMaker, perps::PerpsMaker, spot::SpotMaker},
-        orders::{futures::FuturesOrderManager, perps::PerpsOrderManager, spot::SpotOrderManager},
     },
     oracle::cypher::CypherOracleProvider,
     utils::accounts::{
@@ -370,10 +369,9 @@ pub async fn get_context_info(
 
 /// Gets the appropriate [`Maker`] for the given config.
 pub async fn get_maker_from_config(
+    rpc_client: &Arc<RpcClient>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<ExecutionContext>>,
-    orders_sender: Arc<Sender<OrdersInfo>>,
-    action_sender: Arc<Sender<Action>>,
     cypher_ctx: &CypherContext,
     context_info: &ContextInfo,
     config: &Config,
@@ -423,35 +421,45 @@ pub async fn get_maker_from_config(
         dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send,
     > = match &context_info.context_accounts {
         Accounts::Futures(f) => Arc::new(FuturesMaker::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
             inventory_mngr,
             shutdown_sender.clone(),
             context_sender.clone(),
-            orders_sender.clone(),
-            action_sender.clone(),
+            context_info.user_accounts.clone(),
+            f.clone(),
+            context_info.market_metadata.clone(),
             config.maker_config.layers as usize,
             config.maker_config.spacing_bps,
             config.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
         Accounts::Perpetuals(p) => Arc::new(PerpsMaker::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
             inventory_mngr,
             shutdown_sender.clone(),
             context_sender.clone(),
-            orders_sender.clone(),
-            action_sender.clone(),
+            context_info.user_accounts.clone(),
+            p.clone(),
+            context_info.market_metadata.clone(),
             config.maker_config.layers as usize,
             config.maker_config.spacing_bps,
             config.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
         Accounts::Spot(s) => Arc::new(SpotMaker::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
             inventory_mngr,
             shutdown_sender.clone(),
             context_sender.clone(),
-            orders_sender.clone(),
-            action_sender.clone(),
+            context_info.user_accounts.clone(),
+            s.clone(),
+            context_info.market_metadata.clone(),
             config.maker_config.layers as usize,
             config.maker_config.spacing_bps,
+            config.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
     };
@@ -473,56 +481,6 @@ pub fn get_hedger_from_config(
         };
 
     Ok(hedger)
-}
-
-/// Gets the appropriate [`OrderManager`] for the given symbol.
-pub async fn get_order_manager(
-    rpc_client: &Arc<RpcClient>,
-    shutdown_sender: Arc<Sender<bool>>,
-    context_sender: Arc<Sender<OperationContext>>,
-    config: &Config,
-    context_info: &ContextInfo,
-) -> Result<Arc<dyn OrderManager<Input = OperationContext>>, Error> {
-    info!("Preparing Order Manager for {}", context_info.symbol);
-
-    let order_manager: Arc<dyn OrderManager<Input = OperationContext>> =
-        match &context_info.context_accounts {
-            Accounts::Futures(f) => Arc::new(FuturesOrderManager::new(
-                rpc_client.clone(),
-                context_info.user_accounts.signer.clone(),
-                shutdown_sender.clone(),
-                context_sender.clone(),
-                context_info.user_accounts.clone(),
-                f.clone(),
-                context_info.market_metadata.clone(),
-                config.maker_config.time_in_force,
-                context_info.symbol.to_string(),
-            )),
-            Accounts::Perpetuals(p) => Arc::new(PerpsOrderManager::new(
-                rpc_client.clone(),
-                context_info.user_accounts.signer.clone(),
-                shutdown_sender.clone(),
-                context_sender.clone(),
-                context_info.user_accounts.clone(),
-                p.clone(),
-                context_info.market_metadata.clone(),
-                config.maker_config.time_in_force,
-                context_info.symbol.to_string(),
-            )),
-            Accounts::Spot(s) => Arc::new(SpotOrderManager::new(
-                rpc_client.clone(),
-                context_info.user_accounts.signer.clone(),
-                shutdown_sender.clone(),
-                context_sender.clone(),
-                context_info.user_accounts.clone(),
-                s.clone(),
-                context_info.market_metadata.clone(),
-                config.maker_config.time_in_force,
-                context_info.symbol.to_string(),
-            )),
-        };
-
-    Ok(order_manager)
 }
 
 /// Gets the appropriate [`ContextBuilder`] for the given symbol.

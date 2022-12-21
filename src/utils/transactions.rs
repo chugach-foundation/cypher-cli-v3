@@ -45,6 +45,7 @@ pub async fn send_cancels(
                 match res {
                     Ok(s) => {
                         let (_, rest) = candidates.split_at(prev_tx_idx);
+                        let idx = if idx > rest.len() { rest.len() } else { idx };
                         let (split, _) = rest.split_at(idx);
                         signatures.push(TransactionInfo::<CandidateCancel> {
                             candidates: split.to_vec(),
@@ -135,6 +136,7 @@ pub async fn send_placements(
                 match res {
                     Ok(s) => {
                         let (_, rest) = candidates.split_at(prev_tx_idx);
+                        let idx = if idx > rest.len() { rest.len() } else { idx };
                         let (split, _) = rest.split_at(idx);
                         signatures.push(TransactionInfo::<CandidatePlacement> {
                             candidates: split.to_vec(),

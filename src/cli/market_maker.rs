@@ -19,16 +19,14 @@ use crate::{
             OperationContext,
         },
         oracle::{OracleInfo, OracleProvider},
-        orders::OrderManager,
-        runner::{ExecutionCondition, Runner, RunnerOptions},
         strategy::Strategy,
     },
     context::builders::global::GlobalContextBuilder,
     market_maker::{
         config::{
             get_context_builder, get_context_info, get_context_manager_from_config,
-            get_hedger_from_config, get_maker_from_config, get_oracle_provider, get_order_manager,
-            get_user_info, load_config, Config, ConfigError,
+            get_hedger_from_config, get_maker_from_config, get_oracle_provider, get_user_info,
+            load_config, Config, ConfigError,
         },
         error::Error,
     },
@@ -288,51 +286,10 @@ pub async fn process_market_maker_command(
         }
     };
 
-    let maker_order_manager: Arc<dyn OrderManager<Input = OperationContext>> =
-        match get_order_manager(
-            rpc_client,
-            shutdown_sender.clone(),
-            maker_context_builder.sender(),
-            &mm_config,
-            &maker_context_info,
-        )
-        .await
-        {
-            Ok(m) => m,
-            Err(e) => {
-                warn!(
-                    "There was an error preparing Maker Order Manager: {}",
-                    e.to_string()
-                );
-                return Err(Box::new(CliError::MarketMaker(e)));
-            }
-        };
-
-    let hedger_order_manager: Arc<dyn OrderManager<Input = OperationContext>> =
-        match get_order_manager(
-            rpc_client,
-            shutdown_sender.clone(),
-            hedger_context_builder.sender(),
-            &mm_config,
-            &hedger_context_info,
-        )
-        .await
-        {
-            Ok(m) => m,
-            Err(e) => {
-                warn!(
-                    "There was an error preparing Hedger Order Manager: {}",
-                    e.to_string()
-                );
-                return Err(Box::new(CliError::MarketMaker(e)));
-            }
-        };
-
     let maker = match get_maker_from_config(
+        rpc_client,
         shutdown_sender.clone(),
         maker_context_manager.sender(),
-        maker_order_manager.sender(),
-        maker_order_manager.action_sender(),
         &cypher_ctx,
         &maker_context_info,
         &mm_config,
@@ -356,34 +313,6 @@ pub async fn process_market_maker_command(
     // at this point we have prepared everything we need
     // all that is left is spawning tasks for the components that should run concurrently in order to propagate data
     info!("🔥💃 Let's dance! 💃🔥");
-
-    // clone and spawn task for the maker order manager
-    let maker_order_manager_clone = maker_order_manager.clone();
-    let maker_order_manager_handle = tokio::spawn(async move {
-        match maker_order_manager_clone.start().await {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "There was an error running Maker Order Manager: {:?}",
-                    e.to_string()
-                );
-            }
-        }
-    });
-
-    // clone and spawn task for the hedger order manager
-    let hedger_order_manager_clone = hedger_order_manager.clone();
-    let hedger_order_manager_handle = tokio::spawn(async move {
-        match hedger_order_manager_clone.start().await {
-            Ok(_) => (),
-            Err(e) => {
-                warn!(
-                    "There was an error running Hedger Order Manager: {:?}",
-                    e.to_string()
-                );
-            }
-        }
-    });
 
     // clone and spawn task for the maker oracle provider
     let maker_oracle_provider_clone = maker_oracle_provider.clone();
@@ -499,49 +428,27 @@ pub async fn process_market_maker_command(
         }
     });
 
-    // let maker_runner_opts = RunnerOptions {
-    //     name: maker_context_info.symbol.to_string(),
+    // let hedger_runner_opts = RunnerOptions {
+    //     name: hedger_context_info.symbol.to_string(),
     //     shutdown: shutdown_sender.clone(),
     //     execution_condition: ExecutionCondition::EventBased,
-    //     strategy: maker.clone(),
-    //     context_manager: maker_context_manager.clone(),
+    //     strategy: hedger.clone(),
+    //     context_manager: hedger_context_manager.clone(),
     // };
 
-    // let maker_runner = Arc::new(Runner::new(maker_runner_opts));
-    // let maker_runner_clone = maker_runner.clone();
-    // let maker_runner_handle = tokio::spawn(async move {
-    //     match maker_runner_clone.run().await {
+    // let hedger_runner = Arc::new(Runner::new(hedger_runner_opts));
+    // let hedger_runner_clone = hedger_runner.clone();
+    // let hedger_runner_handle = tokio::spawn(async move {
+    //     match hedger_runner_clone.run().await {
     //         Ok(()) => (),
     //         Err(e) => {
     //             warn!(
-    //                 "There was an error running Making Strategy Runner: {:?}",
+    //                 "There was an error running Hedging Strategy Runner: {:?}",
     //                 e.to_string()
     //             );
     //         }
     //     }
     // });
-
-    let hedger_runner_opts = RunnerOptions {
-        name: hedger_context_info.symbol.to_string(),
-        shutdown: shutdown_sender.clone(),
-        execution_condition: ExecutionCondition::EventBased,
-        strategy: hedger.clone(),
-        context_manager: hedger_context_manager.clone(),
-    };
-
-    let hedger_runner = Arc::new(Runner::new(hedger_runner_opts));
-    let hedger_runner_clone = hedger_runner.clone();
-    let hedger_runner_handle = tokio::spawn(async move {
-        match hedger_runner_clone.run().await {
-            Ok(()) => (),
-            Err(e) => {
-                warn!(
-                    "There was an error running Hedging Strategy Runner: {:?}",
-                    e.to_string()
-                );
-            }
-        }
-    });
 
     // only add the necessary subscriptions to the service so the initial account fetching propagates to all listeners
     let streaming_account_service = Arc::new(StreamingAccountInfoService::new(
@@ -584,10 +491,7 @@ pub async fn process_market_maker_command(
         hedger_ctx_builder_handler,
         maker_context_manager_handle,
         hedger_context_manager_handle,
-        maker_order_manager_handle,
-        hedger_order_manager_handle,
         maker_handle,
-        hedger_runner_handle
     );
 
     Ok(CliResult {})
