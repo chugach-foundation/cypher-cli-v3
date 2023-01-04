@@ -10,7 +10,7 @@ use cypher_client::{
         convert_price_to_decimals, convert_price_to_lots, derive_account_address,
         derive_orders_account_address, derive_pool_address, derive_pool_node_address,
         derive_public_clearing_address, derive_sub_account_address, fixed_to_ui, fixed_to_ui_price,
-        get_zero_copy_account, native_to_ui, native_to_ui_price,
+        get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
     OrdersAccount, SelfTradeBehavior, Side,
@@ -801,7 +801,6 @@ pub async fn process_futures_market_order(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
         client_order_id: 0,
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -927,10 +926,7 @@ pub async fn process_futures_close(
     } else {
         Side::Ask
     };
-    let impact_price = ob_ctx.get_impact_price(
-        fixed_to_ui(position_size.abs(), market.state.inner.config.decimals).to_num(),
-        side,
-    );
+    let impact_price = ob_ctx.get_impact_price(position_size.abs().to_num(), side);
 
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(
@@ -1009,7 +1005,6 @@ pub async fn process_futures_close(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
         client_order_id: 0,
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -1199,7 +1194,6 @@ pub async fn process_futures_limit_order(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::PostOnly,
-        self_trade_behavior: SelfTradeBehavior::CancelProvide,
         client_order_id: 0,
         limit: u16::MAX,
         max_ts: u64::MAX,

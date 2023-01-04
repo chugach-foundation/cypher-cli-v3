@@ -654,15 +654,16 @@ pub trait Maker: Send + Sync {
             let mut managed_orders = self.managed_orders_writer().await;
             // remove these confirmed cancels from the ones we are tracking
             for order in inflight_cancels_to_remove.iter() {
-                let order_idx = inflight_cancels
-                    .iter()
-                    .position(|p| {
-                        p.client_order_id == order.client_order_id
-                            || p.order_id == order.order_id && p.side == order.side
-                    })
-                    .unwrap();
-                inflight_cancels.remove(order_idx);
-
+                let order_idx = inflight_cancels.iter().position(|p| {
+                    p.client_order_id == order.client_order_id
+                        || p.order_id == order.order_id && p.side == order.side
+                });
+                match order_idx {
+                    Some(idx) => {
+                        inflight_cancels.remove(idx);
+                    }
+                    None => continue,
+                };
                 match managed_orders.iter().position(|p| {
                     p.client_order_id == order.client_order_id
                         || p.order_id == order.order_id && p.side == order.side
@@ -671,7 +672,7 @@ pub trait Maker: Send + Sync {
                         managed_orders.remove(i);
                     }
                     None => continue,
-                }
+                };
             }
         }
 
@@ -734,10 +735,15 @@ pub trait Maker: Send + Sync {
             for order in inflight_orders_to_move.iter() {
                 let order_idx = inflight_orders
                     .iter()
-                    .position(|p| p.client_order_id == order.client_order_id)
-                    .unwrap();
-                inflight_orders.remove(order_idx);
-                managed_orders.push(order.clone());
+                    .position(|p| p.client_order_id == order.client_order_id);
+
+                match order_idx {
+                    Some(idx) => {
+                        inflight_orders.remove(idx);
+                        managed_orders.push(order.clone());
+                    }
+                    None => continue,
+                }
             }
         }
 
@@ -754,9 +760,14 @@ pub trait Maker: Send + Sync {
             for order in inflight_orders_to_remove.iter() {
                 let order_idx = inflight_orders
                     .iter()
-                    .position(|p| p.client_order_id == order.client_order_id)
-                    .unwrap();
-                inflight_orders.remove(order_idx);
+                    .position(|p| p.client_order_id == order.client_order_id);
+
+                match order_idx {
+                    Some(idx) => {
+                        inflight_orders.remove(idx);
+                    }
+                    None => continue,
+                }
             }
         }
 

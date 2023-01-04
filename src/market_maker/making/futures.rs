@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
 use cypher_client::instructions::{cancel_futures_order, new_futures_order};
-use cypher_client::utils::convert_price_to_lots;
+use cypher_client::utils::{convert_coin_to_lots, convert_price_to_lots};
 use cypher_client::{
     cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, SelfTradeBehavior,
 };
@@ -233,12 +233,15 @@ impl Maker for FuturesMaker {
                 10u64.pow(self.market_metadata.decimals as u32),
                 self.market_metadata.quote_multiplier,
             );
-            let max_base_qty = order_placement
-                .base_quantity
-                .mul(I80F48::from(
-                    10u64.pow(self.market_metadata.decimals as u32),
-                ))
-                .to_num();
+            let max_base_qty = convert_coin_to_lots(
+                order_placement
+                    .base_quantity
+                    .mul(I80F48::from(
+                        10u64.pow(self.market_metadata.decimals as u32),
+                    ))
+                    .to_num(),
+                self.market_metadata.base_multiplier,
+            );
             let max_quote_qty = limit_price * max_base_qty;
 
             new_order_ixs.push(new_futures_order(
@@ -261,7 +264,6 @@ impl Maker for FuturesMaker {
                     max_base_qty,
                     max_quote_qty,
                     order_type: DerivativeOrderType::PostOnly,
-                    self_trade_behavior: SelfTradeBehavior::CancelProvide,
                     client_order_id: *client_order_id,
                     limit: u16::MAX,
                     max_ts,

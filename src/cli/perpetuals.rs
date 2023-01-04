@@ -7,10 +7,10 @@ use cypher_client::{
         update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_price_to_decimals, convert_price_to_lots, derive_account_address,
-        derive_orders_account_address, derive_pool_address, derive_pool_node_address,
-        derive_public_clearing_address, derive_sub_account_address, fixed_to_ui, fixed_to_ui_price,
-        get_zero_copy_account,
+        convert_coin_to_decimals, convert_coin_to_lots, convert_price_to_decimals,
+        convert_price_to_lots, derive_account_address, derive_orders_account_address,
+        derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
+        derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
     OrdersAccount, SelfTradeBehavior, Side,
@@ -793,8 +793,6 @@ pub async fn process_perps_market_order(
     );
 
     let limit_price = impact_price.unwrap();
-
-    let mut max_quote_qty = max_base_qty * limit_price;
     let max_quote_qty_without_fee = max_base_qty * limit_price;
     let max_quote_qty =
         (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
@@ -830,7 +828,6 @@ pub async fn process_perps_market_order(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -964,11 +961,8 @@ pub async fn process_perps_close(
     } else {
         Side::Ask
     };
-    let impact_price = ob_ctx.get_impact_price(
-        fixed_to_ui(position_size.abs(), market.state.inner.config.decimals).to_num(),
-        side,
-    );
 
+    let impact_price = ob_ctx.get_impact_price(position_size.abs().to_num(), side);
     if impact_price.is_none() {
         return Err(Box::new(CliError::BadParameters(
             format!(
@@ -1047,7 +1041,6 @@ pub async fn process_perps_close(
         max_base_qty,
         max_quote_qty,
         order_type: DerivativeOrderType::ImmediateOrCancel,
-        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -1186,11 +1179,13 @@ pub async fn process_perps_limit_order(
         user_fee_tier.rebate_bps
     );
 
-    let max_base_qty = size
-        .mul(I80F48::from(
+    let max_base_qty = convert_coin_to_lots(
+        size.mul(I80F48::from(
             10u64.pow(market.state.inner.config.decimals as u32),
         ))
-        .to_num();
+        .to_num(),
+        market.state.inner.base_multiplier,
+    );
     let max_quote_qty = if order_type == DerivativeOrderType::PostOnly {
         max_base_qty * limit_price
     } else {
@@ -1217,7 +1212,7 @@ pub async fn process_perps_limit_order(
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            I80F48::from(convert_coin_to_decimals(max_base_qty, market.state.inner.base_multiplier)),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1229,7 +1224,6 @@ pub async fn process_perps_limit_order(
         max_base_qty,
         max_quote_qty,
         order_type,
-        self_trade_behavior: SelfTradeBehavior::AbortTransaction,
         client_order_id: SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs(),
         limit: u16::MAX,
         max_ts: u64::MAX,
@@ -1318,7 +1312,6 @@ pub async fn process_perps_settle_funds(
         &market.address,
         &orders_account,
         &quote_pool_node,
-        &keypair.pubkey(),
     )];
 
     let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {

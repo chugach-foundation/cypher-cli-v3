@@ -82,6 +82,7 @@ pub async fn request_faucet(config: &CliConfig, mint: &Pubkey) -> Result<CliResu
             &keypair.pubkey(),
             &keypair.pubkey(),
             mint,
+            &spl_token::id(),
         )]
     } else {
         Vec::new()

@@ -80,7 +80,7 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
         .unwrap();
 
     println!(
-        "\n| {:^10} | {:^45} | {:^20} | {:^20} | {:^15} | {:^15} | {:^5} | {:^15} | {:^15} |",
+        "\n| {:^10} | {:^45} | {:^20} | {:^20} | {:^15} | {:^15} | {:^5} | {:^15} |",
         "Name",
         "Market",
         "Authority",
@@ -89,7 +89,6 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
         "M. Price (UI)",
         "Dec.",
         "Pos. Count",
-        "OI",
     );
 
     for (pubkey, account) in &program_accounts {
@@ -103,7 +102,7 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
             Utc,
         );
         println!(
-            "| {:<10} | {:^45} | {:^20} | {:^20} | {:>15.6} | {:>15.6} | {:>5} | {:>15} | {:>15.6} |",
+            "| {:<10} | {:^45} | {:^20} | {:^20} | {:>15.6} | {:>15.6} | {:>5} | {:>15} |",
             market_name,
             pubkey.to_string(),
             market.inner.authority.to_string()[..20].to_string(),
@@ -112,7 +111,6 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
             market.market_price(),
             market.inner.config.decimals,
             market.positions_count,
-            fixed_to_ui(market.open_interest(), market.inner.config.decimals),
         );
     }
 
@@ -140,15 +138,8 @@ pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn 
         .unwrap();
 
     println!(
-        "\n| {:^10} | {:^45} | {:^20} | {:^15} | {:^5} | {:^15} | {:^15} | {:^15} |",
-        "Name",
-        "Market",
-        "Authority",
-        "O. Price (UI)",
-        "Dec.",
-        "OI",
-        "Long Funding",
-        "Short Funding"
+        "\n| {:^10} | {:^45} | {:^20} | {:^15} | {:^5} | {:^15} | {:^15} |",
+        "Name", "Market", "Authority", "O. Price (UI)", "Dec.", "Long Funding", "Short Funding"
     );
 
     for (pubkey, account) in &program_accounts {
@@ -158,13 +149,12 @@ pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn 
             .unwrap()
             .trim_matches(char::from(0));
         println!(
-            "| {:<10} | {:^45} | {:^20} | {:>15.5} | {:>5} | {:>15.5} | {:>15.10} | {:>15.10} |",
+            "| {:<10} | {:^45} | {:^20} | {:>15.5} | {:>5} | {:>15.10} | {:>15.10} |",
             market_name,
             pubkey.to_string(),
             market.inner.authority.to_string()[..20].to_string(),
             cache.oracle_price(),
             market.inner.config.decimals,
-            fixed_to_ui(market.open_interest(), market.inner.config.decimals),
             market.long_funding(),
             market.short_funding(),
         );

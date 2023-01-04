@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
 use cypher_client::instructions::{cancel_perp_order, new_perp_order};
-use cypher_client::utils::convert_price_to_lots;
+use cypher_client::utils::{convert_coin_to_lots, convert_price_to_lots};
 use cypher_client::{
     cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, SelfTradeBehavior,
 };
@@ -233,18 +233,22 @@ impl Maker for PerpsMaker {
                 10u64.pow(self.market_metadata.decimals as u32),
                 self.market_metadata.quote_multiplier,
             );
-            let max_base_qty = order_placement
-                .base_quantity
-                .mul(I80F48::from(
-                    10u64.pow(self.market_metadata.decimals as u32),
-                ))
-                .to_num();
+            let max_base_qty = convert_coin_to_lots(
+                order_placement
+                    .base_quantity
+                    .mul(I80F48::from(
+                        10u64.pow(self.market_metadata.decimals as u32),
+                    ))
+                    .to_num(),
+                self.market_metadata.base_multiplier,
+            );
             let max_quote_qty = limit_price * max_base_qty;
             info!(
-                "{} - [{}] Placing order. Limit Price: {} - Max Base Qty: {} - Max Quote Qty: {} - Client ID: {}",
+                "{} - [{}] Placing order. Limit Price: {} - Limit Price (fp32): {} - Max Base Qty: {} - Max Quote Qty: {} - Client ID: {}",
                 type_name::<Self>(),
                 self.symbol(),
                 limit_price,
+                limit_price << 32,
                 max_base_qty,
                 max_quote_qty,
                 *client_order_id
@@ -268,7 +272,6 @@ impl Maker for PerpsMaker {
                     max_base_qty,
                     max_quote_qty,
                     order_type: DerivativeOrderType::PostOnly,
-                    self_trade_behavior: SelfTradeBehavior::CancelProvide,
                     client_order_id: *client_order_id,
                     limit: u16::MAX,
                     max_ts,

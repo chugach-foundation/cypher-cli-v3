@@ -12,7 +12,7 @@ use cypher_client::{
     utils::{
         derive_account_address, derive_pool_node_vault_signer_address,
         derive_public_clearing_address, derive_sub_account_address, derive_token_address,
-        fixed_to_ui, fixed_to_ui_price, native_to_ui, native_to_ui_price,
+        fixed_to_ui, fixed_to_ui_price, native_to_ui,
     },
     wrapped_sol, CacheAccount, CypherAccount, CypherSubAccount, MarginCollateralRatioType,
 };
@@ -565,12 +565,10 @@ pub async fn deposit(
         .iter()
         .find(|p| p.state.pool_name == encoded_symbol)
         .unwrap();
-
-    let pool_node_info = pool
-        .state
-        .nodes
+    let pool_node = pool
+        .pool_nodes
         .iter()
-        .find(|n| n.pool_node != Pubkey::default())
+        .find(|n| n.address != Pubkey::default())
         .unwrap();
 
     // We will simply assume that the user has an ATA for the given token mint if it is not the Wrapped SOL mint
@@ -618,9 +616,9 @@ pub async fn deposit(
         &account,
         &sub_account,
         &pool.address,
-        &pool_node_info.pool_node,
+        &pool_node.address,
         &source_token_account,
-        &pool.state.token_vault,
+        &pool_node.state.token_vault,
         &pool.state.token_mint,
         &keypair.pubkey(),
         amount
@@ -714,15 +712,13 @@ pub async fn withdraw(
         .iter()
         .find(|p| p.state.pool_name == encoded_symbol)
         .unwrap();
-
-    let pool_node_info = pool
-        .state
-        .nodes
+    let pool_node = pool
+        .pool_nodes
         .iter()
-        .find(|n| n.pool_node != Pubkey::default())
+        .find(|n| n.address != Pubkey::default())
         .unwrap();
 
-    let (vault_signer, _) = derive_pool_node_vault_signer_address(&pool_node_info.pool_node);
+    let (vault_signer, _) = derive_pool_node_vault_signer_address(&pool_node.address);
 
     // We will simply assume that the user has an ATA for the given token mint if it is not the Wrapped SOL mint
     let (destination_token_account, token_account_keypair) =
@@ -760,9 +756,9 @@ pub async fn withdraw(
         &account,
         &sub_account,
         &pool.address,
-        &pool_node_info.pool_node,
+        &pool_node.address,
         &destination_token_account,
-        &pool.state.token_vault,
+        &pool_node.state.token_vault,
         &vault_signer,
         &pool.state.token_mint,
         &keypair.pubkey(),
