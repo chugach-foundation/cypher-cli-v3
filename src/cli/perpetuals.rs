@@ -7,10 +7,10 @@ use cypher_client::{
         update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_coin_to_decimals, convert_coin_to_lots, convert_price_to_decimals,
+        convert_coin_to_decimals_fixed, convert_coin_to_lots, convert_price_to_decimals_fixed,
         convert_price_to_lots, derive_account_address, derive_orders_account_address,
         derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
-        derive_sub_account_address, fixed_to_ui, fixed_to_ui_price, get_zero_copy_account,
+        derive_sub_account_address, fixed_to_ui, get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
     OrdersAccount, SelfTradeBehavior, Side,
@@ -34,7 +34,7 @@ use crate::{
     utils::accounts::get_or_create_orders_account,
 };
 
-use super::{command::CliCommand, CliConfig};
+use super::{command::CliCommand, orderbook::display_orderbook, CliConfig};
 
 #[derive(Debug)]
 pub enum PerpetualsSubCommand {
@@ -48,6 +48,9 @@ pub enum PerpetualsSubCommand {
         symbol: String,
     },
     Settle {
+        symbol: String,
+    },
+    Book {
         symbol: String,
     },
     Market {
@@ -85,7 +88,7 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .short("s")
                                 .long("symbol")
                                 .takes_value(true)
-                                .help("The market symbol, e.g. \"SOL1!\"."),
+                                .help("The market symbol, e.g. \"SOL-PERP\"."),
                         )
                 )
                 .subcommand(
@@ -96,7 +99,18 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .short("s")
                                 .long("symbol")
                                 .takes_value(true)
-                                .help("The market symbol, e.g. \"SOL1!\"."),
+                                .help("The market symbol, e.g. \"SOL-PERP\"."),
+                        )
+                )
+                .subcommand(
+                    SubCommand::with_name("book")
+                        .about("Displays the book on a given market.")
+                        .arg(
+                            Arg::with_name("symbol")
+                                .short("s")
+                                .long("symbol")
+                                .takes_value(true)
+                                .help("The market symbol, e.g. \"SOL-PERP\"."),
                         )
                 )
                 .subcommand(
@@ -165,7 +179,7 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .short("s")
                                 .long("symbol")
                                 .takes_value(true)
-                                .help("The market symbol, e.g. \"SOL1!\"."),
+                                .help("The market symbol, e.g. \"SOL-PERP\"."),
                         )
                         .arg(
                             Arg::with_name("side")
@@ -178,7 +192,7 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .short("i")
                                 .long("order-id")
                                 .takes_value(true)
-                                .help("The order ID, value should fit in a u128..")
+                                .help("The order ID, value should fit in a u128.")
                         ),
                 )
         )
@@ -268,6 +282,20 @@ pub fn parse_perps_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn e
                 }
             };
             Ok(CliCommand::Perpetuals(PerpetualsSubCommand::Settle {
+                symbol: symbol.to_string(),
+            }))
+        }
+        ("book", Some(matches)) => {
+            // market symbol
+            let symbol = match matches.value_of("symbol") {
+                Some(s) => s,
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Symbol not provided, to see available markets try \"list futures\" command.".to_string(),
+                    )));
+                }
+            };
+            Ok(CliCommand::Perpetuals(PerpetualsSubCommand::Book {
                 symbol: symbol.to_string(),
             }))
         }
@@ -562,9 +590,13 @@ pub async fn list_perps_open_orders(
                     order.side.to_string(),
                     base_quantity,
                     quote_quantity,
-                    fixed_to_ui_price(
-                        I80F48::from(bo.price),
-                        market.state.inner.config.decimals,
+                    fixed_to_ui(
+                        convert_price_to_decimals_fixed(
+                            bo.price,
+                            market.state.inner.base_multiplier,
+                            10u64.pow(market.state.inner.config.decimals as u32),
+                            market.state.inner.quote_multiplier
+                        ),
                         QUOTE_TOKEN_DECIMALS
                     ),
                 );
@@ -793,6 +825,7 @@ pub async fn process_perps_market_order(
     );
 
     let limit_price = impact_price.unwrap();
+    let max_base_qty = convert_coin_to_lots(max_base_qty, market.state.inner.base_multiplier);
     let max_quote_qty_without_fee = max_base_qty * limit_price;
     let max_quote_qty =
         (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
@@ -810,13 +843,12 @@ pub async fn process_perps_market_order(
         "Placing market {} order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         side.to_string(),
         market_name,
-        fixed_to_ui_price(
-            I80F48::from(limit_price),
-            market.state.inner.config.decimals,
+        fixed_to_ui(
+            convert_price_to_decimals_fixed(limit_price, market.state.inner.base_multiplier, 10u64.pow(market.state.inner.config.decimals as u32), market.state.inner.quote_multiplier),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1007,7 +1039,10 @@ pub async fn process_perps_close(
     );
 
     let limit_price = impact_price.unwrap();
-    let max_base_qty = position_size.abs().to_num::<u64>();
+    let max_base_qty = convert_coin_to_lots(
+        position_size.abs().to_num::<u64>(),
+        market.state.inner.base_multiplier,
+    );
     let max_quote_qty_without_fee = max_base_qty * limit_price;
     let max_quote_qty =
         (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
@@ -1023,13 +1058,12 @@ pub async fn process_perps_close(
     println!(
         "Closing Perp Position on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
-        fixed_to_ui_price(
-            I80F48::from(limit_price),
-            market.state.inner.config.decimals,
+        fixed_to_ui(
+            convert_price_to_decimals_fixed(limit_price, market.state.inner.base_multiplier, 10u64.pow(market.state.inner.config.decimals as u32), market.state.inner.quote_multiplier),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1201,18 +1235,16 @@ pub async fn process_perps_limit_order(
         "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
         fixed_to_ui(
-            I80F48::from(
-                convert_price_to_decimals(
-                    limit_price,
-                    market.state.inner.base_multiplier,
-                    10u64.pow(market.state.inner.config.decimals as u32),
-                    market.state.inner.quote_multiplier
-                )
+            convert_price_to_decimals_fixed(
+                limit_price,
+                market.state.inner.base_multiplier,
+                10u64.pow(market.state.inner.config.decimals as u32),
+                market.state.inner.quote_multiplier
             ),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(convert_coin_to_decimals(max_base_qty, market.state.inner.base_multiplier)),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1326,6 +1358,52 @@ pub async fn process_perps_settle_funds(
         "Successfully settled funds. Transaction signtaure: {}",
         sig.first().unwrap()
     );
+
+    Ok(CliResult {})
+}
+
+pub async fn process_perps_book(
+    config: &CliConfig,
+    symbol: &str,
+) -> Result<CliResult, Box<dyn error::Error>> {
+    let rpc_client = config.rpc_client.as_ref().unwrap();
+
+    let ctx = match CypherContext::load_perpetual_markets(rpc_client).await {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            eprintln!("Failed to load Cypher Context.");
+            return Err(Box::new(CliError::ContextError(e)));
+        }
+    };
+
+    let markets = ctx.perp_markets.read().await;
+    let market = markets
+        .iter()
+        .find(|m| {
+            from_utf8(&m.state.inner.market_name)
+                .unwrap()
+                .trim_matches('\0')
+                == symbol
+        })
+        .unwrap();
+
+    let book_ctx = match AgnosticOrderBookContext::load(
+        rpc_client,
+        market.state.as_ref(),
+        &market.address,
+        &market.state.inner.bids,
+        &market.state.inner.asks,
+    )
+    .await
+    {
+        Ok(book) => book,
+        Err(e) => {
+            eprintln!("Failed to load Order Book Context.");
+            return Err(Box::new(CliError::ContextError(e)));
+        }
+    };
+
+    display_orderbook(&book_ctx, market.state.as_ref());
 
     Ok(CliResult {})
 }

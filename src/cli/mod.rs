@@ -20,6 +20,7 @@ pub mod futures;
 pub mod liquidator;
 pub mod list;
 pub mod market_maker;
+pub mod orderbook;
 pub mod perpetuals;
 pub mod random;
 pub mod spot;

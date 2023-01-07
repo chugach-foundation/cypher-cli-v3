@@ -11,9 +11,9 @@ use super::{
     },
     faucet::{list_faucets, parse_faucet_command, request_faucet},
     futures::{
-        list_futures_open_orders, parse_futures_command, process_futures_cancel_order,
-        process_futures_close, process_futures_limit_order, process_futures_market_order,
-        process_futures_settle_funds, FuturesSubCommand,
+        list_futures_open_orders, parse_futures_command, process_futures_book,
+        process_futures_cancel_order, process_futures_close, process_futures_limit_order,
+        process_futures_market_order, process_futures_settle_funds, FuturesSubCommand,
     },
     liquidator::{parse_liquidator_command, process_liquidator_command},
     list::{
@@ -21,9 +21,9 @@ use super::{
     },
     market_maker::{parse_market_maker_command, process_market_maker_command},
     perpetuals::{
-        list_perps_open_orders, parse_perps_command, process_perps_cancel_order,
-        process_perps_close, process_perps_limit_order, process_perps_market_order,
-        process_perps_settle_funds, PerpetualsSubCommand,
+        list_perps_open_orders, parse_perps_command, process_perps_book,
+        process_perps_cancel_order, process_perps_close, process_perps_limit_order,
+        process_perps_market_order, process_perps_settle_funds, PerpetualsSubCommand,
     },
     random::{parse_random_command, process_random_command},
     spot::{
@@ -212,6 +212,9 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             FuturesSubCommand::Settle { symbol } => {
                 process_futures_settle_funds(config, symbol.as_str()).await
             }
+            FuturesSubCommand::Book { symbol } => {
+                process_futures_book(config, symbol.as_str()).await
+            }
             FuturesSubCommand::Market { symbol, side, size } => {
                 process_futures_market_order(config, symbol.as_str(), *side, *size).await
             }
@@ -245,6 +248,9 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             }
             PerpetualsSubCommand::Settle { symbol } => {
                 process_perps_settle_funds(config, symbol.as_str()).await
+            }
+            PerpetualsSubCommand::Book { symbol } => {
+                process_perps_book(config, symbol.as_str()).await
             }
             PerpetualsSubCommand::Market { symbol, side, size } => {
                 process_perps_market_order(config, symbol.as_str(), *side, *size).await

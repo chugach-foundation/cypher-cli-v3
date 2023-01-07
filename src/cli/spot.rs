@@ -10,7 +10,7 @@ use cypher_client::{
         derive_orders_account_address, derive_pool_address, derive_pool_node_address,
         derive_pool_node_vault_signer_address, derive_public_clearing_address,
         derive_spot_open_orders_address, derive_sub_account_address, fixed_to_ui,
-        fixed_to_ui_price, gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals, convert_pc_to_decimals,
+        gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals, convert_pc_to_decimals,
     },
     Clearing, CypherAccount, NewSpotOrderArgs, OrderType, SelfTradeBehavior, Side,
 };

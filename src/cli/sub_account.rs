@@ -12,7 +12,7 @@ use cypher_client::{
     utils::{
         derive_account_address, derive_pool_node_vault_signer_address,
         derive_public_clearing_address, derive_sub_account_address, derive_token_address,
-        fixed_to_ui, fixed_to_ui_price, native_to_ui,
+        fixed_to_ui, native_to_ui_fixed,
     },
     wrapped_sol, CacheAccount, CypherAccount, CypherSubAccount, MarginCollateralRatioType,
 };
@@ -976,12 +976,14 @@ pub async fn peek_sub_account(
     let perp_markets = ctx.perp_markets.read().await;
 
     println!(
-        "\n| {:^5} | {:^10} | {:^25} | {:^25} | {:^25} | {:^15} | {:^15} | {:^15} | {:^15} |",
+        "\n| {:^5} | {:^10} | {:^25} | {:^25} | {:^25} | {:^25} | {:^25} | {:^15} | {:^15} | {:^15} | {:^15} |",
         "Idx",
         "Position",
         "Size (UI)",
-        "O. Price (UI)",
         "Value (UI)",
+        "Size Filled (UI)",
+        "Value (UI)",
+        "O. Price (UI)",
         "OO B. Total",
         "OO B. Locked",
         "OO Q. Total",
@@ -1002,16 +1004,18 @@ pub async fn peek_sub_account(
                 fixed_to_ui(pos.spot.total_position(cache), pool.state.config.decimals);
             let position_value = total_position.checked_mul(price).unwrap();
             println!(
-                "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15} | {:>15} | {:>15} | {:>15} |",
+                "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
                 pos_idx,
                 pool_name,
                 total_position,
-                price,
                 position_value,
-                native_to_ui(pos.spot.open_orders_cache.coin_total, pool.state.config.decimals),
-                native_to_ui(pos.spot.open_orders_cache.coin_total - pos.spot.open_orders_cache.coin_free, pool.state.config.decimals),
-                native_to_ui(pos.spot.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
-                native_to_ui(pos.spot.open_orders_cache.pc_total - pos.spot.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
+                "N/A",
+                "N/A",
+                price,
+                native_to_ui_fixed(pos.spot.open_orders_cache.coin_total, pool.state.config.decimals),
+                native_to_ui_fixed(pos.spot.open_orders_cache.coin_total - pos.spot.open_orders_cache.coin_free, pool.state.config.decimals),
+                native_to_ui_fixed(pos.spot.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
+                native_to_ui_fixed(pos.spot.open_orders_cache.pc_total - pos.spot.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
             );
         }
     }
@@ -1030,20 +1034,25 @@ pub async fn peek_sub_account(
                     cache_account.get_price_cache(market.state.inner.config.cache_index as usize);
                 let price = cache.market_price();
                 let total_position =
+                    fixed_to_ui(pos.derivative.total_position(), market_config.decimals);
+                let total_position_value = total_position.checked_mul(price).unwrap();
+                let base_position =
                     fixed_to_ui(pos.derivative.base_position(), market_config.decimals);
-                let position_value = total_position.checked_mul(price).unwrap();
+                let base_position_value = base_position.checked_mul(price).unwrap();
                 println!(
-                    "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15} | {:>15} | {:>15} | {:>15} |",
+                    "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
                     pos_idx,
                     market_name,
+                    base_position,
+                    base_position_value,
                     total_position,
+                    total_position_value,
                     price,
-                    position_value,
-                    native_to_ui(pos.derivative.open_orders_cache.coin_total, market.state.inner.config.decimals),
-                    native_to_ui(pos.derivative.open_orders_cache.coin_total
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.coin_total, market.state.inner.config.decimals),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.coin_total
                         - pos.derivative.open_orders_cache.coin_free, market.state.inner.config.decimals),
-                    native_to_ui(pos.derivative.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
-                    native_to_ui(pos.derivative.open_orders_cache.pc_total - pos.derivative.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.pc_total - pos.derivative.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
                 );
             }
 
@@ -1060,20 +1069,25 @@ pub async fn peek_sub_account(
                     cache_account.get_price_cache(market.state.inner.config.cache_index as usize);
                 let price = cache.oracle_price();
                 let total_position =
+                    fixed_to_ui(pos.derivative.total_position(), market_config.decimals);
+                let total_position_value = total_position.checked_mul(price).unwrap();
+                let base_position =
                     fixed_to_ui(pos.derivative.base_position(), market_config.decimals);
-                let position_value = total_position.checked_mul(price).unwrap();
+                let base_position_value = base_position.checked_mul(price).unwrap();
                 println!(
-                    "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15} | {:>15} | {:>15} | {:>15} |",
+                    "| {:^5} | {:^10} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>25.4} | {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
                     pos_idx,
                     market_name,
+                    base_position,
+                    base_position_value,
                     total_position,
+                    total_position_value,
                     price,
-                    position_value,
-                    native_to_ui(pos.derivative.open_orders_cache.coin_total, market.state.inner.config.decimals),
-                    native_to_ui(pos.derivative.open_orders_cache.coin_total
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.coin_total, market.state.inner.config.decimals),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.coin_total
                         - pos.derivative.open_orders_cache.coin_free, market.state.inner.config.decimals),
-                    native_to_ui(pos.derivative.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
-                    native_to_ui(pos.derivative.open_orders_cache.pc_total - pos.derivative.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.pc_total, QUOTE_TOKEN_DECIMALS),
+                    native_to_ui_fixed(pos.derivative.open_orders_cache.pc_total - pos.derivative.open_orders_cache.pc_free, QUOTE_TOKEN_DECIMALS),
                 );
             }
         }

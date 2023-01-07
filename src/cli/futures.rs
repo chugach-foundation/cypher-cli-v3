@@ -7,10 +7,10 @@ use cypher_client::{
         settle_futures_funds, update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_price_to_decimals, convert_price_to_lots, derive_account_address,
-        derive_orders_account_address, derive_pool_address, derive_pool_node_address,
-        derive_public_clearing_address, derive_sub_account_address, fixed_to_ui, fixed_to_ui_price,
-        get_zero_copy_account,
+        convert_coin_to_decimals_fixed, convert_coin_to_lots, convert_price_to_decimals_fixed,
+        convert_price_to_lots, derive_account_address, derive_orders_account_address,
+        derive_pool_address, derive_pool_node_address, derive_public_clearing_address,
+        derive_sub_account_address, fixed_to_ui, get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
     OrdersAccount, SelfTradeBehavior, Side,
@@ -35,9 +35,12 @@ use std::{
     sync::Arc,
 };
 
-use crate::{cli::CliError, utils::accounts::get_or_create_orders_account};
+use crate::{
+    cli::{CliError, CliResult},
+    utils::accounts::get_or_create_orders_account,
+};
 
-use super::{command::CliCommand, CliConfig, CliResult};
+use super::{command::CliCommand, orderbook::display_orderbook, CliConfig};
 
 #[derive(Debug)]
 pub enum FuturesSubCommand {
@@ -51,6 +54,9 @@ pub enum FuturesSubCommand {
         symbol: String,
     },
     Settle {
+        symbol: String,
+    },
+    Book {
         symbol: String,
     },
     Market {
@@ -94,6 +100,17 @@ impl FuturesSubCommands for App<'_, '_> {
                 .subcommand(
                     SubCommand::with_name("settle")
                         .about("Settles existing unsettled funds on a given market.")
+                        .arg(
+                            Arg::with_name("symbol")
+                                .short("s")
+                                .long("symbol")
+                                .takes_value(true)
+                                .help("The market symbol, e.g. \"SOL1!\"."),
+                        )
+                )
+                .subcommand(
+                    SubCommand::with_name("book")
+                        .about("Displays the book on a given market.")
                         .arg(
                             Arg::with_name("symbol")
                                 .short("s")
@@ -262,6 +279,20 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                 }
             };
             Ok(CliCommand::Futures(FuturesSubCommand::Settle {
+                symbol: symbol.to_string(),
+            }))
+        }
+        ("book", Some(matches)) => {
+            // market symbol
+            let symbol = match matches.value_of("symbol") {
+                Some(s) => s,
+                None => {
+                    return Err(Box::new(CliError::BadParameters(
+                        "Symbol not provided, to see available markets try \"list futures\" command.".to_string(),
+                    )));
+                }
+            };
+            Ok(CliCommand::Futures(FuturesSubCommand::Book {
                 symbol: symbol.to_string(),
             }))
         }
@@ -554,9 +585,13 @@ pub async fn list_futures_open_orders(
                     order.side.to_string(),
                     base_quantity,
                     quote_quantity,
-                    fixed_to_ui_price(
-                        I80F48::from(bo.price),
-                        market.state.inner.config.decimals,
+                    fixed_to_ui(
+                        convert_price_to_decimals_fixed(
+                            bo.price,
+                            market.state.inner.base_multiplier,
+                            10u64.pow(market.state.inner.config.decimals as u32),
+                            market.state.inner.quote_multiplier
+                        ),
                         QUOTE_TOKEN_DECIMALS
                     ),
                 );
@@ -769,6 +804,7 @@ pub async fn process_futures_market_order(
     }
 
     let limit_price = impact_price.unwrap();
+    let max_base_qty = convert_coin_to_lots(max_base_qty, market.state.inner.base_multiplier);
     let max_quote_qty_without_fee = max_base_qty * limit_price;
     let max_quote_qty = (max_quote_qty_without_fee * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
 
@@ -783,13 +819,12 @@ pub async fn process_futures_market_order(
         "Placing market {} order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         side.to_string(),
         market_name,
-        fixed_to_ui_price(
-            I80F48::from(limit_price),
-            market.state.inner.config.decimals,
+        fixed_to_ui(
+            convert_price_to_decimals_fixed(limit_price, market.state.inner.base_multiplier, 10u64.pow(market.state.inner.config.decimals as u32), market.state.inner.quote_multiplier),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -973,7 +1008,10 @@ pub async fn process_futures_close(
         }
     };
     let limit_price = impact_price.unwrap();
-    let max_base_qty = position_size.abs().to_num::<u64>();
+    let max_base_qty = convert_coin_to_lots(
+        position_size.abs().to_num::<u64>(),
+        market.state.inner.base_multiplier,
+    );
     let max_quote_qty_without_fee = max_base_qty * limit_price;
     let max_quote_qty = (max_quote_qty_without_fee * (10_000 + 30)) / 10_000; // TODO: change this to actually include the account's fee tier
 
@@ -987,13 +1025,12 @@ pub async fn process_futures_close(
     println!(
         "Closing Futures Position on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
-        fixed_to_ui_price(
-            I80F48::from(limit_price),
-            market.state.inner.config.decimals,
+        fixed_to_ui(
+            convert_price_to_decimals_fixed(limit_price, market.state.inner.base_multiplier, 10u64.pow(market.state.inner.config.decimals as u32), market.state.inner.quote_multiplier),
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1151,11 +1188,13 @@ pub async fn process_futures_limit_order(
         user_fee_tier.rebate_bps
     );
 
-    let max_base_qty = size
-        .mul(I80F48::from(
+    let max_base_qty = convert_coin_to_lots(
+        size.mul(I80F48::from(
             10u64.pow(market.state.inner.config.decimals as u32),
         ))
-        .to_num();
+        .to_num(),
+        market.state.inner.base_multiplier,
+    );
     let max_quote_qty = if order_type == DerivativeOrderType::PostOnly {
         max_base_qty * limit_price
     } else {
@@ -1171,18 +1210,17 @@ pub async fn process_futures_limit_order(
         "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",
         market_name,
         fixed_to_ui(
-            I80F48::from(
-                convert_price_to_decimals(
+                convert_price_to_decimals_fixed(
                     limit_price,
                     market.state.inner.base_multiplier,
                     10u64.pow(market.state.inner.config.decimals as u32),
                     market.state.inner.quote_multiplier
                 )
-            ),
+            ,
             QUOTE_TOKEN_DECIMALS
         ),
         fixed_to_ui(
-            I80F48::from(max_base_qty),
+            convert_coin_to_decimals_fixed(max_base_qty, market.state.inner.base_multiplier),
             market.state.inner.config.decimals
         ),
         fixed_to_ui(I80F48::from(max_quote_qty), QUOTE_TOKEN_DECIMALS)
@@ -1298,6 +1336,52 @@ pub async fn process_futures_settle_funds(
         "Successfully settled funds. Transaction signtaure: {}",
         sig.first().unwrap()
     );
+
+    Ok(CliResult {})
+}
+
+pub async fn process_futures_book(
+    config: &CliConfig,
+    symbol: &str,
+) -> Result<CliResult, Box<dyn error::Error>> {
+    let rpc_client = config.rpc_client.as_ref().unwrap();
+
+    let ctx = match CypherContext::load_futures_markets(rpc_client).await {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            eprintln!("Failed to load Cypher Context.");
+            return Err(Box::new(CliError::ContextError(e)));
+        }
+    };
+
+    let markets = ctx.futures_markets.read().await;
+    let market = markets
+        .iter()
+        .find(|m| {
+            from_utf8(&m.state.inner.market_name)
+                .unwrap()
+                .trim_matches('\0')
+                == symbol
+        })
+        .unwrap();
+
+    let book_ctx = match AgnosticOrderBookContext::load(
+        rpc_client,
+        market.state.as_ref(),
+        &market.address,
+        &market.state.inner.bids,
+        &market.state.inner.asks,
+    )
+    .await
+    {
+        Ok(book) => book,
+        Err(e) => {
+            eprintln!("Failed to load Order Book Context.");
+            return Err(Box::new(CliError::ContextError(e)));
+        }
+    };
+
+    display_orderbook(&book_ctx, market.state.as_ref());
 
     Ok(CliResult {})
 }
