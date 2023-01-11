@@ -11,8 +11,8 @@ keywords = ["solana", "anchor", "cypher", "cpi", "cli", "marketmaking", "liquida
 
 [features]
 default = [ "devnet" ]
-devnet = [ "anchor-spl/devnet" ]
-mainnet-beta = []
+devnet = [ "anchor-spl/devnet", "cypher-client/devnet", "cypher-utils/devnet" ]
+mainnet-beta = [ "cypher-client/mainnet-beta", "cypher-utils/mainnet-beta" ]
 
 [dependencies]
 agnostic-orderbook = { git = "https://github.com/chugach-foundation/agnostic-orderbook.git" }

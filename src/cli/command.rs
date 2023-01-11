@@ -200,7 +200,7 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             }
         },
         CliCommand::Futures(futures_command) => match futures_command {
-            FuturesSubCommand::Orders => list_futures_open_orders(config).await,
+            FuturesSubCommand::Orders { pubkey } => list_futures_open_orders(config, *pubkey).await,
             FuturesSubCommand::Cancel {
                 symbol,
                 order_id,
@@ -237,7 +237,9 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             }
         },
         CliCommand::Perpetuals(perps_command) => match perps_command {
-            PerpetualsSubCommand::Orders => list_perps_open_orders(config).await,
+            PerpetualsSubCommand::Orders { pubkey } => {
+                list_perps_open_orders(config, *pubkey).await
+            }
             PerpetualsSubCommand::Cancel {
                 symbol,
                 order_id,

@@ -46,6 +46,7 @@ where
             type_name::<Self>(),
             self.symbol,
         );
+        self.pulse(ctx);
         Ok(HedgerPulseResult { size_executed: 0 })
     }
 }

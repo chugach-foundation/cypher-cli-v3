@@ -44,7 +44,9 @@ use super::{command::CliCommand, orderbook::display_orderbook, CliConfig};
 
 #[derive(Debug)]
 pub enum FuturesSubCommand {
-    Orders,
+    Orders {
+        pubkey: Option<Pubkey>,
+    },
     Cancel {
         symbol: String,
         order_id: u128,
@@ -84,7 +86,13 @@ impl FuturesSubCommands for App<'_, '_> {
                 .about("Subcommands that interact with Futures Markets.")
                 .subcommand(
                     SubCommand::with_name("orders")
-                        .about("Lists all existing open orders by market."),
+                        .about("Lists all existing open orders by market.")
+                        .arg(
+                            Arg::with_name("pubkey")
+                                .long("pubkey")
+                                .takes_value(true)
+                                .help("The wallet pubkey."),
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("close")
@@ -201,7 +209,13 @@ impl FuturesSubCommands for App<'_, '_> {
 
 pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
-        ("orders", Some(_matches)) => Ok(CliCommand::Futures(FuturesSubCommand::Orders)),
+        ("orders", Some(matches)) => {
+            let pubkey = match matches.value_of("pubkey") {
+                Some(a) => Some(Pubkey::from_str(a).unwrap()),
+                None => None,
+            };
+            Ok(CliCommand::Futures(FuturesSubCommand::Orders { pubkey }))
+        }
         ("cancel", Some(matches)) => {
             // market symbol
             let symbol = match matches.value_of("symbol") {
@@ -441,9 +455,17 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
 
 pub async fn list_futures_open_orders(
     config: &CliConfig,
+    pubkey: Option<Pubkey>,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
+
+    let authority = if pubkey.is_some() {
+        pubkey.unwrap()
+    } else {
+        keypair.pubkey()
+    };
+    println!("Using Authority: {}", authority);
 
     let ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
@@ -456,7 +478,7 @@ pub async fn list_futures_open_orders(
         RpcFilterType::DataSize(8 + std::mem::size_of::<OrdersAccount>() as u64),
         RpcFilterType::Memcmp(Memcmp {
             offset: 8 + 8, // offset for authority pubkey on cypher's orders accounts, includes anchor discriminator
-            bytes: MemcmpEncodedBytes::Base58(keypair.pubkey().to_string()),
+            bytes: MemcmpEncodedBytes::Base58(authority.to_string()),
             encoding: Some(MemcmpEncoding::Binary),
         }),
     ];
