@@ -3,6 +3,7 @@ use cypher_utils::{transaction_builder::TransactionBuilder, utils::send_transact
 use log::warn;
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::{
+    compute_budget::ComputeBudgetInstruction,
     instruction::Instruction,
     signature::{Keypair, Signature},
 };
@@ -24,6 +25,7 @@ pub async fn send_cancels(
     confirm: bool,
 ) -> Result<Vec<TransactionInfo<CandidateCancel>>, ClientError> {
     let mut txn_builder = TransactionBuilder::new();
+    add_priority_fees(&mut txn_builder);
     let mut submitted: bool = false;
     let mut signatures: Vec<TransactionInfo<CandidateCancel>> = Vec::new();
     let mut prev_tx_idx = 0;
@@ -54,6 +56,7 @@ pub async fn send_cancels(
                         prev_tx_idx = idx;
                         submitted = true;
                         txn_builder.clear();
+                        add_priority_fees(&mut txn_builder);
                         txn_builder.add(ix.clone());
                     }
                     Err(e) => {
@@ -115,6 +118,7 @@ pub async fn send_placements(
     confirm: bool,
 ) -> Result<Vec<TransactionInfo<CandidatePlacement>>, ClientError> {
     let mut txn_builder = TransactionBuilder::new();
+    add_priority_fees(&mut txn_builder);
     let mut submitted: bool = false;
     let mut signatures: Vec<TransactionInfo<CandidatePlacement>> = Vec::new();
     let mut prev_tx_idx = 0;
@@ -145,6 +149,7 @@ pub async fn send_placements(
                         prev_tx_idx = idx;
                         submitted = true;
                         txn_builder.clear();
+                        add_priority_fees(&mut txn_builder);
                         txn_builder.add(ix.clone());
                     }
                     Err(e) => {
@@ -188,4 +193,9 @@ pub async fn send_placements(
     }
 
     Ok(signatures)
+}
+
+fn add_priority_fees(txn_builder: &mut TransactionBuilder) {
+    txn_builder.add(ComputeBudgetInstruction::set_compute_unit_limit(1_400_000));
+    txn_builder.add(ComputeBudgetInstruction::set_compute_unit_price(1));
 }
