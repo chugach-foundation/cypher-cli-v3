@@ -1,7 +1,7 @@
 [package]
 name = "cypher-cli"
 edition = "2021"
-version = "0.1.0"
+version = "3.0.0"
 description = "A command-line application to interface with cypher v3"
 license = "Apache-2.0"
 authors = ["Hugo <hoak@offpiste.io>"]

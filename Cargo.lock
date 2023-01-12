@@ -1019,7 +1019,7 @@ dependencies = [
 
 [[package]]
 name = "cypher-cli"
-version = "0.1.0"
+version = "3.0.0"
 dependencies = [
  "agnostic-orderbook",
  "anchor-lang",
