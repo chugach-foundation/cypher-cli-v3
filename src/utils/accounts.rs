@@ -66,7 +66,7 @@ async fn create_orders_account(
         &authority.pubkey(),
         &authority.pubkey(),
     )];
-    match send_transactions(&rpc_client, ixs, authority, true).await {
+    match send_transactions(&rpc_client, ixs, authority, true, Some((1_400_000, 1))).await {
         Ok(s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -146,7 +146,7 @@ async fn create_spot_orders_account(
         &authority.pubkey(),
         &authority.pubkey(),
     )];
-    match send_transactions(&rpc_client, ixs, authority, true).await {
+    match send_transactions(&rpc_client, ixs, authority, true, Some((1_400_000, 1))).await {
         Ok(s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -219,7 +219,7 @@ async fn create_account(
         account_bump,
         account_number,
     )];
-    match send_transactions(&rpc_client, ixs, authority, true).await {
+    match send_transactions(&rpc_client, ixs, authority, true, Some((1_400_000, 1))).await {
         Ok(s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -298,7 +298,7 @@ async fn create_sub_account(
         sub_account_number,
         sub_account_alias,
     )];
-    match send_transactions(&rpc_client, ixs, authority, true).await {
+    match send_transactions(&rpc_client, ixs, authority, true, Some((1_400_000, 1))).await {
         Ok(s) => Ok(()),
         Err(e) => Err(e),
     }

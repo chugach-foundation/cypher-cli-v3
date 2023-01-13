@@ -716,7 +716,7 @@ pub async fn process_perps_cancel_order(
         args,
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -913,7 +913,7 @@ pub async fn process_perps_market_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1120,7 +1120,7 @@ pub async fn process_perps_close(
         args,
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1309,7 +1309,7 @@ pub async fn process_perps_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1371,7 +1371,7 @@ pub async fn process_perps_settle_funds(
         &quote_pool_node,
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");

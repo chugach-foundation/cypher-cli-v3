@@ -708,7 +708,7 @@ pub async fn process_futures_cancel_order(
         args,
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -887,7 +887,7 @@ pub async fn process_futures_market_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1093,7 +1093,7 @@ pub async fn process_futures_close(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1283,7 +1283,7 @@ pub async fn process_futures_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -1346,7 +1346,7 @@ pub async fn process_futures_settle_funds(
         &keypair.pubkey(),
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");

@@ -418,16 +418,6 @@ pub async fn process_market_maker_command(
         }
     });
 
-    let maker_clone = maker.clone();
-    let maker_handle = tokio::spawn(async move {
-        match maker_clone.start().await {
-            Ok(_) => (),
-            Err(e) => {
-                warn!("There was an error running Maker: {:?}", e.to_string());
-            }
-        }
-    });
-
     // let hedger_runner_opts = RunnerOptions {
     //     name: hedger_context_info.symbol.to_string(),
     //     shutdown: shutdown_sender.clone(),

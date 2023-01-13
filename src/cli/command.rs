@@ -27,8 +27,8 @@ use super::{
     },
     random::{parse_random_command, process_random_command},
     spot::{
-        list_spot_open_orders, parse_spot_command, process_spot_limit_order,
-        process_spot_market_order, SpotSubCommand,
+        list_spot_open_orders, parse_spot_command, process_spot_book, process_spot_limit_order,
+        process_spot_market_order, process_spot_settle_funds, SpotSubCommand,
     },
     sub_account::{
         close_sub_account, create_sub_account, deposit, parse_sub_account_command,
@@ -276,7 +276,11 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             }
         },
         CliCommand::Spot(spot_command) => match spot_command {
-            SpotSubCommand::Orders => list_spot_open_orders(config).await,
+            SpotSubCommand::Book { symbol } => process_spot_book(config, symbol.as_str()).await,
+            SpotSubCommand::Orders { pubkey } => list_spot_open_orders(config, *pubkey).await,
+            SpotSubCommand::Settle { symbol } => {
+                process_spot_settle_funds(config, symbol.as_str()).await
+            }
             SpotSubCommand::Market { symbol, side, size } => {
                 process_spot_market_order(config, symbol.as_str(), *side, *size).await
             }
