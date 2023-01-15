@@ -1258,16 +1258,18 @@ pub async fn process_perps_limit_order(
         .to_num(),
         market.state.inner.base_multiplier,
     );
-    let max_quote_qty = if order_type == DerivativeOrderType::PostOnly {
-        max_base_qty * limit_price
+    let (fee, max_quote_qty) = if order_type == DerivativeOrderType::PostOnly {
+        (0, max_base_qty * limit_price)
     } else {
         let max_quote_qty_without_fee = max_base_qty * limit_price;
-        (max_quote_qty_without_fee * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+        let max_quote_qty =
+            (max_quote_qty_without_fee * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000;
+        (max_quote_qty - max_quote_qty_without_fee, max_quote_qty)
     };
 
     println!(
-        "(debug) Price: {} | Size: {} | Notional: {}",
-        limit_price, max_base_qty, max_quote_qty
+        "(debug) Price: {} | Size: {} | Notional: {} | Fee: {}",
+        limit_price, max_base_qty, max_quote_qty, fee
     );
     println!(
         "Placing limit order on {} at price {:.5} with size {:.5} for total quote quantity of {:.5}.",

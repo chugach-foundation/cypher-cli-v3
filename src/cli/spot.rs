@@ -520,7 +520,7 @@ pub async fn process_spot_market_order(
 
     let max_native_pc_qty_including_fees = {
         let max_quote_qty_without_fee = max_coin_qty * limit_price;
-        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000
     };
 
     println!(
@@ -741,7 +741,7 @@ pub async fn process_spot_limit_order(
         max_coin_qty * limit_price * market_ctx.state.pc_lot_size
     } else {
         let max_quote_qty_without_fee = max_coin_qty * limit_price;
-        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_001 + user_fee_tier.taker_bps as u64)) / 10_000
+        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000
     };
 
     println!(
