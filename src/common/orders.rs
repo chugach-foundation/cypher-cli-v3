@@ -8,14 +8,12 @@ use solana_sdk::{
     instruction::Instruction,
     signature::{Keypair, Signature},
 };
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::{
     broadcast::{error::SendError, Receiver, Sender},
     RwLockReadGuard, RwLockWriteGuard,
 };
-
-use crate::utils::transactions::{send_cancels, send_placements};
 
 use super::context::{builder::ContextBuilder, OrdersContext};
 

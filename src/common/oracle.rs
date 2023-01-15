@@ -1,4 +1,4 @@
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use fixed::types::I80F48;
@@ -96,10 +96,9 @@ pub trait OracleProvider: Send + Sync {
     async fn start(&self) -> Result<(), OracleProviderError> {
         let mut input_receiver = self.input_receiver();
         let mut shutdown_receiver = self.shutdown_receiver();
-        let type_name = type_name::<Self>();
         let symbol = self.symbol();
 
-        info!("{} - [{}] Starting oracle provider..", type_name, symbol);
+        info!("[{}] Starting oracle provider..", symbol);
 
         loop {
             tokio::select! {
@@ -111,7 +110,7 @@ pub trait OracleProvider: Send + Sync {
                                     match self.send(output).await {
                                         Ok(()) => (),
                                         Err(e) => {
-                                            warn!("{} - [{}] There was an error sending oracle price update: {:?}", type_name, symbol, e.to_string());
+                                            warn!("[{}] There was an error sending oracle price update: {:?}",  symbol, e.to_string());
                                         }
                                     };
                                 },
@@ -119,12 +118,12 @@ pub trait OracleProvider: Send + Sync {
                             };
                         },
                         Err(e) => {
-                            warn!("{} - [{}] There was an error receiving account state update.", type_name, symbol);
+                            warn!("[{}] There was an error receiving account state update.",  symbol);
                         }
                     }
                 }
                 _ = shutdown_receiver.recv() => {
-                    info!("{} - [{}] Shutdown signal received, stopping..", type_name, symbol);
+                    info!("[{}] Shutdown signal received, stopping..",  symbol);
                     break;
                 }
             }

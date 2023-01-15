@@ -10,7 +10,7 @@ use cypher_utils::{
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -174,8 +174,7 @@ where
             let mut state = self.state.write().await;
             state.update_quote_pool(&self.quote_pool, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed quote pool account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed quote pool account update.",
                 self.symbol
             );
             return Ok(());
@@ -186,8 +185,7 @@ where
             let mut state = self.state.write().await;
             state.update_quote_pool_node(&account_state.account, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed quote pool node account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed quote pool node account update.",
                 self.symbol
             );
             return Ok(());
@@ -198,8 +196,7 @@ where
             let mut state = self.state.write().await;
             state.update_market(&self.market, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed derivative market account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed derivative market account update.",
                 self.symbol
             );
             return Ok(());
@@ -210,8 +207,7 @@ where
             let mut state = self.state.write().await;
             state.update_event_queue(&self.market, &self.event_queue, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed derivative market event queue account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed derivative market event queue account update.",
                 self.symbol
             );
             return Ok(());
@@ -229,8 +225,7 @@ where
                 Side::Bid,
             );
             info!(
-                "{} - [{}] Sucessfully processed derivative market bids account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed derivative market bids account update.",
                 self.symbol
             );
             return Ok(());
@@ -248,8 +243,7 @@ where
                 Side::Ask,
             );
             info!(
-                "{} - [{}] Sucessfully processed derivative market asks account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed derivative market asks account update.",
                 self.symbol
             );
             return Ok(());
@@ -260,8 +254,7 @@ where
             let mut state = self.state.write().await;
             state.update_open_orders(&self.open_orders, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed derivative market open orders account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed derivative market open orders account update.",
                 self.symbol
             );
             return Ok(());

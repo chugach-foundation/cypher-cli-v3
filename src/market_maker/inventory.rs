@@ -1,5 +1,4 @@
 use log::warn;
-use std::any::type_name;
 use {
     cypher_client::CypherSubAccount,
     fixed::types::I80F48,
@@ -87,7 +86,7 @@ impl InventoryManager for ShapeFunctionInventoryManager {
             None => I80F48::ZERO,
         };
 
-        info!("{} - Current delta: {}", type_name::<Self>(), delta);
+        info!("Current delta: {}", delta);
 
         delta
     }

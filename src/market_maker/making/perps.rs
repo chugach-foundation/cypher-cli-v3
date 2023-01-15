@@ -12,7 +12,6 @@ use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_sdk::instruction::Instruction;
 use solana_sdk::signature::Keypair;
 use solana_sdk::signer::Signer;
-use std::any::type_name;
 use std::ops::Mul;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -166,11 +165,8 @@ impl Maker for PerpsMaker {
         let inventory_mngr = self.inventory_manager();
 
         info!(
-            "{} - [{}] Oracle Source: {:?} - Price: {}",
-            type_name::<Self>(),
-            self.symbol,
-            ctx.oracle_info.source,
-            ctx.oracle_info.price,
+            "[{}] Oracle Source: {:?} - Price: {}",
+            self.symbol, ctx.oracle_info.source, ctx.oracle_info.price,
         );
 
         let spread_info = inventory_mngr.get_spread(ctx.oracle_info.price);
@@ -178,22 +174,14 @@ impl Maker for PerpsMaker {
             return Ok(MakerPulseResult::default());
         }
         info!(
-            "{} - [{}] Mid Price: {} - Best Bid: {} - Best Ask: {}",
-            type_name::<Self>(),
-            self.symbol,
-            spread_info.oracle_price,
-            spread_info.bid,
-            spread_info.ask,
+            "[{}] Mid Price: {} - Best Bid: {} - Best Ask: {}",
+            self.symbol, spread_info.oracle_price, spread_info.bid, spread_info.ask,
         );
 
         let quote_volumes = inventory_mngr.get_quote_volumes(&ctx.global);
         info!(
-            "{} - [{}] Current delta: {} - Volumes - Bid: {} - Ask: {}",
-            type_name::<Self>(),
-            self.symbol,
-            quote_volumes.delta,
-            quote_volumes.bid_size,
-            quote_volumes.ask_size,
+            "[{}] Current delta: {} - Volumes - Bid: {} - Ask: {}",
+            self.symbol, quote_volumes.delta, quote_volumes.bid_size, quote_volumes.ask_size,
         );
         if quote_volumes.bid_size == I80F48::ZERO && quote_volumes.ask_size == I80F48::ZERO {
             return Ok(MakerPulseResult::default());
@@ -244,8 +232,7 @@ impl Maker for PerpsMaker {
             );
             let max_quote_qty = limit_price * max_base_qty;
             info!(
-                "{} - [{}] Placing order. Limit Price: {} - Limit Price (fp32): {} - Max Base Qty: {} - Max Quote Qty: {} - Client ID: {}",
-                type_name::<Self>(),
+                "[{}] Placing order. Limit Price: {} - Limit Price (fp32): {} - Max Base Qty: {} - Max Quote Qty: {} - Client ID: {}",
                 self.symbol(),
                 limit_price,
                 limit_price << 32,
@@ -312,8 +299,7 @@ impl Maker for PerpsMaker {
                 order_cancel.order_id
             };
             info!(
-                "{} - [{}] Cancelling order. Is client ID: {} - ID: {}",
-                type_name::<Self>(),
+                "[{}] Cancelling order. Is client ID: {} - ID: {}",
                 self.symbol(),
                 is_client_id,
                 order_id,

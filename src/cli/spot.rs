@@ -384,7 +384,6 @@ pub async fn list_spot_open_orders(config: &CliConfig, pubkey: Option<Pubkey>) -
         return Ok(CliResult {});
     }
 
-
     Ok(CliResult {})
 }
 

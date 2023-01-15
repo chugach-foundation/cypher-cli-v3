@@ -90,7 +90,7 @@ pub async fn process_market_maker_command(
     config: &CliConfig,
     config_path: &str,
 ) -> Result<CliResult, Box<dyn error::Error>> {
-    _ = init_logger();
+    env_logger::init();
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let pubsub_client = config.pubsub_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();

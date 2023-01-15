@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use log::info;
-use std::any::type_name;
 
 use crate::common::{
     context::ExecutionContext,
@@ -21,11 +20,7 @@ impl SpotHedger {
 impl Hedger for SpotHedger {
     type Input = ExecutionContext;
     fn pulse(&self, ctx: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
-        info!(
-            "{} - [{}] Running spot hedger logic..",
-            type_name::<Self>(),
-            self.symbol
-        );
+        info!("[{}] Running spot hedger logic..", self.symbol);
 
         Ok(HedgerPulseResult::default())
     }
@@ -40,11 +35,7 @@ where
     type Output = HedgerPulseResult;
 
     async fn execute(&self, ctx: &ExecutionContext) -> Result<HedgerPulseResult, StrategyError> {
-        info!(
-            "{} - [{}] Running strategy..",
-            type_name::<Self>(),
-            self.symbol
-        );
+        info!("[{}] Running strategy..", self.symbol);
         self.pulse(ctx);
         Ok(HedgerPulseResult { size_executed: 0 })
     }

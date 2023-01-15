@@ -248,8 +248,8 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             PerpetualsSubCommand::Close { symbol } => {
                 process_perps_close(config, symbol.as_str()).await
             }
-            PerpetualsSubCommand::Settle { symbol } => {
-                process_perps_settle_funds(config, symbol.as_str()).await
+            PerpetualsSubCommand::Settle { symbol, pubkey } => {
+                process_perps_settle_funds(config, symbol.as_str(), *pubkey).await
             }
             PerpetualsSubCommand::Book { symbol } => {
                 process_perps_book(config, symbol.as_str()).await

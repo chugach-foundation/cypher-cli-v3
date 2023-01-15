@@ -114,7 +114,7 @@ pub mod manager {
     use super::{ExecutionContext, GlobalContext, OperationContext};
     use async_trait::async_trait;
     use log::{info, warn};
-    use std::{any::type_name, sync::Arc};
+    use std::sync::Arc;
     use thiserror::Error;
     use tokio::sync::{
         broadcast::{error::SendError, Receiver, Sender},
@@ -174,10 +174,9 @@ pub mod manager {
             let mut op_ctx_update_receiver = self.operation_context_receiver();
             let mut oracle_update_receiver = self.oracle_info_receiver();
             let mut shutdown_receiver = self.shutdown_receiver();
-            let type_name = type_name::<Self>();
             let symbol = self.symbol();
 
-            info!("{} - [{}] Starting..", type_name, symbol);
+            info!("[{}] Starting..", symbol);
 
             loop {
                 tokio::select! {
@@ -190,12 +189,12 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("{} - [{}] There was an error sending execution context update: {:?}", type_name, symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("{} - [{}] There was an error receiving global context update.", type_name, symbol);
+                                warn!("[{}] There was an error receiving global context update.",  symbol);
                                 continue;
                             }
                         }
@@ -209,12 +208,12 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("{} - [{}] There was an error sending execution context update: {:?}", type_name, symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("{} - [{}] There was an error receiving operation context update.", type_name, symbol);
+                                warn!("[{}] There was an error receiving operation context update.",  symbol);
                                 continue;
                             }
                         }
@@ -228,18 +227,18 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("{} - [{}] There was an error sending execution context update: {:?}", type_name, symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("{} - [{}] There was an error receiving oracle update.", type_name, symbol);
+                                warn!("[{}] There was an error receiving oracle update.",  symbol);
                                 continue;
                             }
                         }
                     }
                     _ = shutdown_receiver.recv() => {
-                        info!("{} - [{}] Shutdown signal received, stopping..", type_name, symbol);
+                        info!("[{}] Shutdown signal received, stopping..",  symbol);
                         break;
                     }
                 }
@@ -273,7 +272,7 @@ pub mod builder {
     use cypher_utils::accounts_cache::AccountState;
     use log::{info, warn};
     use solana_sdk::pubkey::Pubkey;
-    use std::{any::type_name, sync::Arc};
+    use std::sync::Arc;
     use thiserror::Error;
     use tokio::sync::broadcast::{error::SendError, Receiver, Sender};
 
@@ -307,10 +306,9 @@ pub mod builder {
         async fn start(&self) -> Result<(), ContextBuilderError> {
             let mut cache_receiver = self.cache_receiver().await;
             let mut shutdown_receiver = self.shutdown_receiver();
-            let type_name = type_name::<Self>();
             let symbol = self.symbol();
 
-            info!("{} - [{}] Starting context builder..", type_name, symbol);
+            info!("[{}] Starting context builder..", symbol);
 
             loop {
                 tokio::select! {
@@ -322,7 +320,7 @@ pub mod builder {
                                         match self.send().await {
                                             Ok(()) => (),
                                             Err(e) => {
-                                                warn!("{} - [{}] There was an error sending operation context update: {:?}", type_name, symbol, e.to_string());
+                                                warn!("[{}] There was an error sending operation context update: {:?}",  symbol, e.to_string());
                                             }
                                         };
                                     },
@@ -330,12 +328,12 @@ pub mod builder {
                                 };
                             },
                             Err(e) => {
-                                warn!("{} - [{}] There was an error receiving account state update.", type_name, symbol);
+                                warn!("[{}] There was an error receiving account state update.",  symbol);
                             }
                         }
                     }
                     _ = shutdown_receiver.recv() => {
-                        info!("{} - [{}] Shutdown signal received, stopping..", type_name, symbol);
+                        info!("[{}] Shutdown signal received, stopping..",  symbol);
                         break;
                     }
                 }

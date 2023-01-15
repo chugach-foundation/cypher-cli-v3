@@ -42,7 +42,7 @@ pub async fn send_cancels(
             let tx = txn_builder.build(blockhash, signer, None);
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
-            if tx.message_data().len() > 1000 {
+            if tx.message_data().len() > 1100 {
                 let res = send_transaction(rpc_client, &tx, confirm).await;
                 match res {
                     Ok(s) => {
@@ -135,7 +135,7 @@ pub async fn send_placements(
             let tx = txn_builder.build(blockhash, signer, None);
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
-            if tx.message_data().len() > 1000 {
+            if tx.message_data().len() > 1100 {
                 let res = send_transaction(rpc_client, &tx, confirm).await;
                 match res {
                     Ok(s) => {

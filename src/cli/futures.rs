@@ -499,6 +499,7 @@ pub async fn list_futures_open_orders(
     let markets = ctx.futures_markets.read().await;
 
     for (pubkey, account) in orders_accounts.iter() {
+        println!("Orders Account: {}", pubkey);
         let orders_account = get_zero_copy_account::<OrdersAccount>(&account.data);
         let market = match markets.iter().find(|m| m.address == orders_account.market) {
             Some(m) => m,

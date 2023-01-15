@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use fixed::types::I80F48;
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock, RwLockWriteGuard,
@@ -99,8 +99,7 @@ impl ContextManager for CypherExecutionContextManager {
         // 1. oracle price has been received
         if oracle_info.price == I80F48::ZERO {
             info!(
-                "{} - [{}] Oracle price unset - Awaiting to send execution context..",
-                type_name::<Self>(),
+                "[{}] Oracle price unset - Awaiting to send execution context..",
                 self.symbol
             );
             return Ok(());
@@ -109,8 +108,7 @@ impl ContextManager for CypherExecutionContextManager {
         // 2. account context exist
         if global_context.user.account_ctx.state.authority == Pubkey::default() {
             info!(
-                "{} - [{}] User account unset - Awaiting to send execution context..",
-                type_name::<Self>(),
+                "[{}] User account unset - Awaiting to send execution context..",
                 self.symbol
             );
             return Ok(());
@@ -119,18 +117,13 @@ impl ContextManager for CypherExecutionContextManager {
         // 3. sub accounts have been loaded
         if global_context.user.sub_account_ctxs.is_empty() {
             info!(
-                "{} - [{}] User sub accounts unset - Awaiting to send execution context..",
-                type_name::<Self>(),
+                "[{}] User sub accounts unset - Awaiting to send execution context..",
                 self.symbol
             );
             return Ok(());
         }
 
-        info!(
-            "{} - [{}] Sending execution context update..",
-            type_name::<Self>(),
-            self.symbol
-        );
+        info!("[{}] Sending execution context update..", self.symbol);
 
         match self.update_sender.send(ExecutionContext {
             operation: operation_context.clone(),
@@ -143,11 +136,7 @@ impl ContextManager for CypherExecutionContextManager {
     }
 
     async fn build(&self) -> ExecutionContext {
-        info!(
-            "{} - [{}] Building execution context..",
-            type_name::<Self>(),
-            self.symbol
-        );
+        info!("[{}] Building execution context..", self.symbol);
         let operation_context = self.operation_context.read().await;
         let global_context = self.global_context.read().await;
         let oracle_info = self.oracle_info.read().await;

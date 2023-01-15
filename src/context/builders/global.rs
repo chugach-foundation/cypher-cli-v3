@@ -6,7 +6,7 @@ use cypher_utils::{
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -105,10 +105,7 @@ impl ContextBuilder for GlobalContextBuilder {
         if account_state.account == cache_account::id() {
             let mut state = self.state.write().await;
             state.update_cache(&account_state.data);
-            info!(
-                "{} - Sucessfully processed cache account update.",
-                type_name::<Self>(),
-            );
+            info!("Sucessfully processed cache account update.",);
             return Ok(());
         }
 
@@ -116,10 +113,7 @@ impl ContextBuilder for GlobalContextBuilder {
         if account_state.account == self.account {
             let mut state = self.state.write().await;
             state.update_account(&self.account, &account_state.data);
-            info!(
-                "{} - Sucessfully processed cypher account update.",
-                type_name::<Self>(),
-            );
+            info!("Sucessfully processed cypher account update.",);
             return Ok(());
         }
 
@@ -127,10 +121,7 @@ impl ContextBuilder for GlobalContextBuilder {
         if account_state.account == self.sub_account {
             let mut state = self.state.write().await;
             state.update_sub_account(&self.sub_account, &account_state.data);
-            info!(
-                "{} - Sucessfully processed cypher sub account update.",
-                type_name::<Self>(),
-            );
+            info!("Sucessfully processed cypher sub account update.",);
             return Ok(());
         } else {
             Err(ContextBuilderError::UnrecognizedAccount(

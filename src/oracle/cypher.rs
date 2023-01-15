@@ -1,6 +1,5 @@
 use log::info;
 use std::{
-    any::type_name,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -56,8 +55,8 @@ impl OracleProvider for CypherOracleProvider {
         let cache = cache_ctx.state.get_price_cache(self.cache_index);
 
         info!(
-            "{} - Oracle price from cache at index {}: {}",
-            type_name::<Self>(),
+            "[{}] - Oracle price from cache at index {}: {}",
+            self.symbol,
             self.cache_index,
             cache.oracle_price()
         );

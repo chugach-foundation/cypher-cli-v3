@@ -6,7 +6,6 @@ use log::{info, warn};
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::{instruction::Instruction, signature::Keypair};
 use std::{
-    any::type_name,
     ops::{Add, Div, Mul, Sub},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -128,7 +127,7 @@ pub trait Maker: Send + Sync {
         let mut shutdown_receiver = self.shutdown_receiver();
         let symbol = self.symbol();
 
-        info!("{} - [{}] Starting maker..", type_name::<Self>(), symbol);
+        info!("[{}] Starting maker..", symbol);
 
         loop {
             tokio::select! {
@@ -137,10 +136,10 @@ pub trait Maker: Send + Sync {
                         Ok(ctx) => {
                             match self.process_update(&ctx).await {
                                 Ok(()) => {
-                                    info!("{} - [{}] Sucessfully processed order manager update.", type_name::<Self>(), symbol);
+                                    info!("[{}] Sucessfully processed order manager update.",  symbol);
                                 },
                                 Err(e) => {
-                                    warn!("{} - [{}] There was an error during order manager update: {:?}", type_name::<Self>(), symbol, e.to_string());
+                                    warn!("[{}] There was an error during order manager update: {:?}",  symbol, e.to_string());
                                 }
                             }
                             let mut context_writer = self.context_writer().await;
@@ -148,20 +147,20 @@ pub trait Maker: Send + Sync {
                             drop(context_writer);
                             match self.pulse().await {
                                 Ok(res) => {
-                                    info!("{} - [{}] Maker pulse: {:?}", type_name::<Self>(), symbol, res);
+                                    info!("[{}] Maker pulse: {:?}",  symbol, res);
                                 },
                                 Err(e) => {
-                                    warn!("{} - [{}] There was an error processing maker pulse: {:?}", type_name::<Self>(), symbol, e.to_string());
+                                    warn!("[{}] There was an error processing maker pulse: {:?}",  symbol, e.to_string());
                                 }
                             };
                         },
                         Err(e) => {
-                            warn!("{} - [{}] There was an error receiving maker input context update.", type_name::<Self>(), symbol);
+                            warn!("[{}] There was an error receiving maker input context update.",  symbol);
                         }
                     }
                 }
                 _ = shutdown_receiver.recv() => {
-                    info!("{} - [{}] Shutdown signal received, stopping..", type_name::<Self>(), symbol);
+                    info!("[{}] Shutdown signal received, stopping..",  symbol);
                     break;
                 }
             }
@@ -181,8 +180,7 @@ pub trait Maker: Send + Sync {
         for order in orders.iter() {
             if order.max_ts < cur_ts || order.layer == usize::MAX {
                 info!(
-                    "{} - [{}] Candidate cancel - {:?} - Order Id: {} - Client Id: {}",
-                    type_name::<Self>(),
+                    "[{}] Candidate cancel - {:?} - Order Id: {} - Client Id: {}",
                     self.symbol(),
                     order.side,
                     order.order_id,
@@ -221,8 +219,7 @@ pub trait Maker: Send + Sync {
                         || equivalent_candidate.base_quantity != order.base_quantity
                     {
                         info!(
-                            "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
-                            type_name::<Self>(),
+                            "[{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
                             self.symbol(),
                             order.side,
                             order.layer,
@@ -240,8 +237,7 @@ pub trait Maker: Send + Sync {
                 None => {
                     // if this order does not have an equivalent candidate we are going to assume that this order should not be here
                     info!(
-                        "{} - [{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
-                        type_name::<Self>(),
+                        "[{}] Candidate cancel - {:?} - Layer: {} - Order Id: {} - Client Id: {}",
                         self.symbol(),
                         order.side,
                         order.layer,
@@ -315,8 +311,7 @@ pub trait Maker: Send + Sync {
             };
 
             info!(
-                "{} - [{}] Candidate placement - BID {:.5} @ {:.5}",
-                type_name::<Self>(),
+                "[{}] Candidate placement - BID {:.5} @ {:.5}",
                 self.symbol(),
                 order_size,
                 order_price,
@@ -363,8 +358,7 @@ pub trait Maker: Send + Sync {
             };
 
             info!(
-                "{} - [{}] Candidate placement - ASK {:.5} @ {:.5}",
-                type_name::<Self>(),
+                "[{}] Candidate placement - ASK {:.5} @ {:.5}",
                 self.symbol(),
                 order_size,
                 order_price,
@@ -389,27 +383,18 @@ pub trait Maker: Send + Sync {
     async fn cancel_expired_orders(&self, orders: &[ManagedOrder]) -> Result<usize, MakerError> {
         let expired_orders = self.get_expired_orders(&orders);
 
-        info!(
-            "{} - [{}] Updating orders..",
-            type_name::<Self>(),
-            self.symbol(),
-        );
+        info!("[{}] Updating orders..", self.symbol(),);
 
         let num_expired_orders = if !expired_orders.is_empty() {
             info!(
-                "{} - [{}] Cancelling {} expired orders.",
-                type_name::<Self>(),
+                "[{}] Cancelling {} expired orders.",
                 self.symbol(),
                 expired_orders.len()
             );
 
             match self.cancel_orders(&expired_orders).await {
                 Ok(_) => {
-                    info!(
-                        "{} - [{}] Sucessfully cancelled orders..",
-                        type_name::<Self>(),
-                        self.symbol(),
-                    );
+                    info!("[{}] Sucessfully cancelled orders..", self.symbol(),);
                 }
                 Err(e) => {
                     return Err(e);
@@ -417,11 +402,7 @@ pub trait Maker: Send + Sync {
             };
             expired_orders.len()
         } else {
-            info!(
-                "{} - [{}] There are no expired orders.",
-                type_name::<Self>(),
-                self.symbol(),
-            );
+            info!("[{}] There are no expired orders.", self.symbol(),);
             0
         };
 
@@ -437,18 +418,13 @@ pub trait Maker: Send + Sync {
         let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
 
         info!(
-            "{} - [{}] Submitting {} new orders.",
-            type_name::<Self>(),
+            "[{}] Submitting {} new orders.",
             self.symbol(),
             candidate_placements.len()
         );
         match self.place_orders(&candidate_placements).await {
             Ok(_) => {
-                info!(
-                    "{} - [{}] Sucessfully placed new orders..",
-                    type_name::<Self>(),
-                    self.symbol(),
-                );
+                info!("[{}] Sucessfully placed new orders..", self.symbol(),);
             }
             Err(e) => {
                 return Err(e);
@@ -475,8 +451,7 @@ pub trait Maker: Send + Sync {
             }) {
                 Some(c) => {
                     info!(
-                        "{} - [{}] Final candidate - {:?} - {:.5} @ {:.5}",
-                        type_name::<Self>(),
+                        "[{}] Final candidate - {:?} - {:.5} @ {:.5}",
                         self.symbol(),
                         candidate_placement.side,
                         candidate_placement.base_quantity,
@@ -538,18 +513,13 @@ pub trait Maker: Send + Sync {
         let stale_orders = self.get_stale_orders(&orders.open_orders, &candidate_placements);
         let num_cancelled_stale_orders = if !stale_orders.is_empty() {
             info!(
-                "{} - [{}] Cancelling {} stale orders.",
-                type_name::<Self>(),
+                "[{}] Cancelling {} stale orders.",
                 self.symbol(),
                 stale_orders.len()
             );
             match self.cancel_orders(&stale_orders).await {
                 Ok(_) => {
-                    info!(
-                        "{} - [{}] Sucessfully cancelled orders..",
-                        type_name::<Self>(),
-                        self.symbol(),
-                    );
+                    info!("[{}] Sucessfully cancelled orders..", self.symbol(),);
                 }
                 Err(e) => {
                     return Err(e);
@@ -570,18 +540,13 @@ pub trait Maker: Send + Sync {
 
         let num_new_orders = if !final_candidates.is_empty() {
             info!(
-                "{} - [{}] Submitting {} final candidates.",
-                type_name::<Self>(),
+                "[{}] Submitting {} final candidates.",
                 self.symbol(),
                 final_candidates.len()
             );
             match self.place_orders(&final_candidates).await {
                 Ok(_) => {
-                    info!(
-                        "{} - [{}] Sucessfully placed orders..",
-                        type_name::<Self>(),
-                        self.symbol(),
-                    );
+                    info!("[{}] Sucessfully placed orders..", self.symbol(),);
                 }
                 Err(e) => {
                     return Err(e);
@@ -606,8 +571,7 @@ pub trait Maker: Send + Sync {
         let mut inflight_cancels_to_remove: Vec<InflightCancel> = Vec::new();
         let ctx_open_orders = ctx.get_open_orders();
         info!(
-            "{} - [{}] There are {} inflight cancels and {} orders on the book.",
-            type_name::<Self>(),
+            "[{}] There are {} inflight cancels and {} orders on the book.",
             symbol,
             inflight_cancels.len(),
             ctx_open_orders.len()
@@ -624,8 +588,7 @@ pub trait Maker: Send + Sync {
                 None => {
                     if !inflight_cancels_to_remove.contains(&inflight_cancel) {
                         info!(
-                            "{} - [{}] Inflight cancel confirmed. Side: {:?} - Order ID: {} - Client Order ID: {}",
-                            type_name::<Self>(),
+                            "[{}] Inflight cancel confirmed. Side: {:?} - Order ID: {} - Client Order ID: {}",
                             symbol,
                             inflight_cancel.side,
                             inflight_cancel.order_id,
@@ -644,8 +607,7 @@ pub trait Maker: Send + Sync {
         }
 
         info!(
-            "{} - [{}] Found {} inflight cancels that have been confirmed..",
-            type_name::<Self>(),
+            "[{}] Found {} inflight cancels that have been confirmed..",
             symbol,
             inflight_cancels_to_remove.len(),
         );
@@ -699,8 +661,7 @@ pub trait Maker: Send + Sync {
                     order.order_id = o.order_id;
                     if !inflight_orders_to_move.contains(&order) {
                         info!(
-                            "{} - [{}] Inflight order confirmed. Side: {:?} - Price: {} - Size: {} - Layer: {} - Order ID: {} - Client Order ID: {}",
-                            type_name::<Self>(),
+                            "[{}] Inflight order confirmed. Side: {:?} - Price: {} - Size: {} - Layer: {} - Order ID: {} - Client Order ID: {}",
                             symbol,
                             inflight_order.side,
                             inflight_order.price,
@@ -724,8 +685,7 @@ pub trait Maker: Send + Sync {
 
         if !inflight_orders_to_move.is_empty() {
             info!(
-                "{} - [{}] Found {} inflight orders that have been confirmed..",
-                type_name::<Self>(),
+                "[{}] Found {} inflight orders that have been confirmed..",
                 symbol,
                 inflight_orders_to_move.len(),
             );
@@ -749,8 +709,7 @@ pub trait Maker: Send + Sync {
 
         if !inflight_orders_to_remove.is_empty() {
             info!(
-                "{} - [{}] Found {} inflight orders that have taken too long to confirm..",
-                type_name::<Self>(),
+                "[{}] Found {} inflight orders that have taken too long to confirm..",
                 symbol,
                 inflight_orders_to_remove.len(),
             );
@@ -783,8 +742,7 @@ pub trait Maker: Send + Sync {
             Ok(()) => (),
             Err(e) => {
                 warn!(
-                    "{} - [{}] There was an error updating inflight order cancels: {:?}",
-                    type_name::<Self>(),
+                    "[{}] There was an error updating inflight order cancels: {:?}",
                     symbol,
                     e.to_string()
                 )
@@ -795,8 +753,7 @@ pub trait Maker: Send + Sync {
             Ok(()) => (),
             Err(e) => {
                 warn!(
-                    "{} - [{}] There was an error updating inflight order placements: {:?}",
-                    type_name::<Self>(),
+                    "[{}] There was an error updating inflight order placements: {:?}",
                     symbol,
                     e.to_string()
                 )
@@ -810,8 +767,7 @@ pub trait Maker: Send + Sync {
         // we'll take any existing on-chain order and add them to managed orders so they end up getting cancelled
         if managed_orders.is_empty() {
             info!(
-                "{} - [{}] There are no managed orders, adding {} confirmed open orders..",
-                type_name::<Self>(),
+                "[{}] There are no managed orders, adding {} confirmed open orders..",
                 symbol,
                 ctx_open_orders.len()
             );
@@ -855,8 +811,7 @@ pub trait Maker: Send + Sync {
         *open_orders = ctx_open_orders.to_vec();
 
         info!(
-            "{} - [{}] There are {} confirmed open orders..",
-            type_name::<Self>(),
+            "[{}] There are {} confirmed open orders..",
             symbol,
             ctx_open_orders.len()
         );
@@ -883,8 +838,7 @@ pub trait Maker: Send + Sync {
         }
 
         info!(
-            "{} - [{}] Filtered {} duplicate order placements.",
-            type_name::<Self>(),
+            "[{}] Filtered {} duplicate order placements.",
             self.symbol(),
             order_placements.len() - filtered_candidates.len()
         );
@@ -918,8 +872,7 @@ pub trait Maker: Send + Sync {
                     for sig in sigs.iter() {
                         if sig.signature.is_some() {
                             info!(
-                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
-                                type_name::<Self>(),
+                                "[{}] Sucessfully submitted transaction. Signature: {}.",
                                 self.symbol(),
                                 sig.signature.unwrap()
                             );
@@ -930,8 +883,7 @@ pub trait Maker: Send + Sync {
                                 }) {
                                     Some(order) => {
                                         info!(
-                                            "{} - [{}] Sucessfully submitted order: {:?}.",
-                                            type_name::<Self>(),
+                                            "[{}] Sucessfully submitted order: {:?}.",
                                             self.symbol(),
                                             candidate
                                         );
@@ -945,12 +897,7 @@ pub trait Maker: Send + Sync {
                             inflight_orders.extend(candidates_submitted);
                         } else {
                             for order in sig.candidates.iter() {
-                                warn!(
-                                    "{} - [{}] Failed to submit order: {:?}",
-                                    type_name::<Self>(),
-                                    self.symbol(),
-                                    order
-                                );
+                                warn!("[{}] Failed to submit order: {:?}", self.symbol(), order);
                             }
                         }
                     }
@@ -991,8 +938,7 @@ pub trait Maker: Send + Sync {
         }
 
         info!(
-            "{} - [{}] Filtered {} duplicate order cancels.",
-            type_name::<Self>(),
+            "[{}] Filtered {} duplicate order cancels.",
             self.symbol(),
             order_cancels.len() - filtered_candidates.len()
         );
@@ -1016,8 +962,7 @@ pub trait Maker: Send + Sync {
                     for sig in sigs.iter() {
                         if sig.signature.is_some() {
                             info!(
-                                "{} - [{}] Sucessfully submitted transaction. Signature: {}.",
-                                type_name::<Self>(),
+                                "[{}] Sucessfully submitted transaction. Signature: {}.",
                                 self.symbol(),
                                 sig.signature.unwrap()
                             );
@@ -1028,8 +973,7 @@ pub trait Maker: Send + Sync {
                                 }) {
                                     Some(_) => {
                                         info!(
-                                            "{} - [{}] Sucessfully submitted cancel: {:?}.",
-                                            type_name::<Self>(),
+                                            "[{}] Sucessfully submitted cancel: {:?}.",
                                             self.symbol(),
                                             candidate
                                         );
@@ -1048,12 +992,7 @@ pub trait Maker: Send + Sync {
                             inflight_cancels.extend(candidates_submitted);
                         } else {
                             for order in sig.candidates.iter() {
-                                warn!(
-                                    "{} - [{}] Failed to submit cancel: {:?}",
-                                    type_name::<Self>(),
-                                    self.symbol(),
-                                    order
-                                );
+                                warn!("[{}] Failed to submit cancel: {:?}", self.symbol(), order);
                             }
                         }
                     }

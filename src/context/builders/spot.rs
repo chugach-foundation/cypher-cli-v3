@@ -10,7 +10,7 @@ use cypher_utils::{
 };
 use log::{info, warn};
 use solana_sdk::pubkey::Pubkey;
-use std::{any::type_name, sync::Arc};
+use std::sync::Arc;
 use tokio::sync::{
     broadcast::{channel, Receiver, Sender},
     RwLock,
@@ -167,8 +167,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_asset_pool(&self.asset_pool, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed asset pool account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed asset pool account update.",
                 self.symbol
             );
             return Ok(());
@@ -179,8 +178,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_asset_pool_node(&account_state.account, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed asset pool node account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed asset pool node account update.",
                 self.symbol
             );
             return Ok(());
@@ -191,8 +189,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_quote_pool(&self.quote_pool, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed quote pool account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed quote pool account update.",
                 self.symbol
             );
             return Ok(());
@@ -203,8 +200,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_quote_pool_node(&account_state.account, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed quote pool node account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed quote pool node account update.",
                 self.symbol
             );
             return Ok(());
@@ -215,8 +211,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_event_queue(&self.market, &self.event_queue, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed spot market event queue account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed spot market event queue account update.",
                 self.symbol
             );
             return Ok(());
@@ -234,8 +229,7 @@ impl ContextBuilder for SpotContextBuilder {
                 Side::Bid,
             );
             info!(
-                "{} - [{}] Sucessfully processed spot market bids account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed spot market bids account update.",
                 self.symbol
             );
             return Ok(());
@@ -253,8 +247,7 @@ impl ContextBuilder for SpotContextBuilder {
                 Side::Ask,
             );
             info!(
-                "{} - [{}] Sucessfully processed spot market asks account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed spot market asks account update.",
                 self.symbol
             );
             return Ok(());
@@ -265,8 +258,7 @@ impl ContextBuilder for SpotContextBuilder {
             let mut state = self.state.write().await;
             state.update_open_orders(&self.open_orders, &account_state.data);
             info!(
-                "{} - [{}] Sucessfully processed spot market open orders account update.",
-                type_name::<Self>(),
+                "[{}] Sucessfully processed spot market open orders account update.",
                 self.symbol
             );
             return Ok(());

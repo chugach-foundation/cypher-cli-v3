@@ -30,6 +30,11 @@ use std::{
 };
 use thousands::Separable;
 
+use crate::cli::{
+    futures::list_futures_open_orders, perpetuals::list_perps_open_orders,
+    spot::list_spot_open_orders,
+};
+
 use super::{command::CliCommand, CliConfig, CliError, CliResult};
 
 #[derive(Debug)]
@@ -1110,6 +1115,27 @@ pub async fn peek_sub_account(
         init_liabilities.separate_with_commas(),
         init_c_ratio,
     );
+
+    match list_spot_open_orders(config, Some(sub_account.master_account)).await {
+        Ok(_) => (),
+        Err(e) => {
+            return Err(e);
+        }
+    }
+
+    match list_perps_open_orders(config, Some(sub_account.authority)).await {
+        Ok(_) => (),
+        Err(e) => {
+            return Err(e);
+        }
+    }
+
+    match list_futures_open_orders(config, Some(sub_account.authority)).await {
+        Ok(_) => (),
+        Err(e) => {
+            return Err(e);
+        }
+    }
 
     Ok(CliResult {})
 }

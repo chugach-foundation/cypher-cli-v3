@@ -51,6 +51,7 @@ pub enum PerpetualsSubCommand {
     },
     Settle {
         symbol: String,
+        pubkey: Option<Pubkey>,
     },
     Book {
         symbol: String,
@@ -107,8 +108,14 @@ impl PerpetualsSubCommands for App<'_, '_> {
                                 .short("s")
                                 .long("symbol")
                                 .takes_value(true)
-                                .help("The market symbol, e.g. \"SOL-PERP\"."),
+                                .help("The market symbol, e.g. \"SOL-PERP\".")
                         )
+                        .arg(
+                            Arg::with_name("pubkey")
+                                .long("pubkey")
+                                .takes_value(true)
+                                .help("The wallet pubkey."),
+                        ),
                 )
                 .subcommand(
                     SubCommand::with_name("book")
@@ -297,8 +304,13 @@ pub fn parse_perps_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn e
                     )));
                 }
             };
+            let pubkey = match matches.value_of("pubkey") {
+                Some(a) => Some(Pubkey::from_str(a).unwrap()),
+                None => None,
+            };
             Ok(CliCommand::Perpetuals(PerpetualsSubCommand::Settle {
                 symbol: symbol.to_string(),
+                pubkey,
             }))
         }
         ("book", Some(matches)) => {
@@ -507,6 +519,7 @@ pub async fn list_perps_open_orders(
     let markets = ctx.perp_markets.read().await;
 
     for (pubkey, account) in orders_accounts.iter() {
+        println!("Orders Account: {}", pubkey);
         let orders_account = get_zero_copy_account::<OrdersAccount>(&account.data);
         let market = match markets.iter().find(|m| m.address == orders_account.market) {
             Some(m) => m,
@@ -1328,9 +1341,17 @@ pub async fn process_perps_limit_order(
 pub async fn process_perps_settle_funds(
     config: &CliConfig,
     symbol: &str,
+    pubkey: Option<Pubkey>,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
+
+    let authority = if pubkey.is_some() {
+        pubkey.unwrap()
+    } else {
+        keypair.pubkey()
+    };
+    println!("Using Authority: {}", authority);
 
     let (public_clearing, _) = derive_public_clearing_address();
 
@@ -1353,7 +1374,7 @@ pub async fn process_perps_settle_funds(
         })
         .unwrap();
 
-    let (master_account, _) = derive_account_address(&keypair.pubkey(), 0); // TODO: change this, allow multiple accounts
+    let (master_account, _) = derive_account_address(&authority, 0); // TODO: change this, allow multiple accounts
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
@@ -1380,7 +1401,7 @@ pub async fn process_perps_settle_funds(
     };
 
     println!(
-        "Successfully settled funds. Transaction signtaure: {}",
+        "Successfully settled funds. Transaction signature: {}",
         sig.first().unwrap()
     );
 

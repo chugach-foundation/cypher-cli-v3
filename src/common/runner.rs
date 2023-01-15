@@ -1,5 +1,5 @@
 use log::{info, warn};
-use std::{any::type_name, error, fmt::Debug, sync::Arc};
+use std::{error, fmt::Debug, sync::Arc};
 use thiserror::Error;
 use tokio::{
     sync::broadcast::Sender,
@@ -81,11 +81,7 @@ where
     }
 
     pub async fn run(&self) -> Result<(), RunnerError> {
-        info!(
-            "{} - [{}] Starting runner..",
-            type_name::<Self>(),
-            self.name
-        );
+        info!("[{}] Starting runner..", self.name);
 
         let res = match &self.execution_condition {
             ExecutionCondition::Interval { interval } => self.execute_on_interval(*interval).await,
@@ -112,7 +108,7 @@ where
 
                         },
                         Err(e) => {
-                            info!("{} - [{}] An error occurred while executing strategy: {:?}.", type_name::<Self>(), self.name, e);
+                            info!("[{}] An error occurred while executing strategy: {:?}.",  self.name, e);
                         }
                     }
                 }
@@ -121,11 +117,7 @@ where
                 }
             }
             if shutdown_signal {
-                info!(
-                    "{} - [{}] Received shutdown signal, stopping.",
-                    type_name::<Self>(),
-                    self.name
-                );
+                info!("[{}] Received shutdown signal, stopping.", self.name);
                 break;
             }
         }
@@ -147,12 +139,12 @@ where
                                 Ok(r) => {
                                 },
                                 Err(e) => {
-                                    info!("{} - [{}] An error occurred while executing strategy: {:?}.", type_name::<Self>(), self.name, e);
+                                    info!("[{}] An error occurred while executing strategy: {:?}.",  self.name, e);
                                 }
                             }
                         },
                         Err(e) => {
-                            warn!("{} - [{}] There was an error receiving message from context manager: {:?}", type_name::<Self>(), self.name, e);
+                            warn!("[{}] There was an error receiving message from context manager: {:?}",  self.name, e);
                         },
                     }
                 }
@@ -161,11 +153,7 @@ where
                 }
             }
             if shutdown_signal {
-                info!(
-                    "{} - [{}] Received shutdown signal, stopping.",
-                    type_name::<Self>(),
-                    self.name
-                );
+                info!("[{}] Received shutdown signal, stopping.", self.name);
                 break;
             }
         }
