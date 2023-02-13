@@ -103,7 +103,7 @@ impl AccountSubCommands for App<'_, '_> {
                             Arg::with_name("pubkey")
                                 .long("pubkey")
                                 .takes_value(true)
-                                .help("The Sub Account pubkey, value should be a pubkey."),
+                                .help("The Account pubkey, value should be a pubkey."),
                         ),
                 ),
         )

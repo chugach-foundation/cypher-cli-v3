@@ -540,9 +540,6 @@ pub async fn deposit(
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
-    // derive clearing address
-    let (public_clearing, _) = derive_public_clearing_address();
-
     // derive account address
     let (account, _account_bump) = if account_number.is_some() {
         derive_account_address(&keypair.pubkey(), account_number.unwrap())
@@ -551,6 +548,10 @@ pub async fn deposit(
         derive_account_address(&keypair.pubkey(), 0)
     };
     println!("Using Account: {}", account);
+
+    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+        .await
+        .unwrap();
 
     // derive sub account address
     let (sub_account, _sub_account_bump) = if sub_account_number.is_some() {
@@ -616,7 +617,7 @@ pub async fn deposit(
     };
 
     ixs.push(deposit_funds(
-        &public_clearing,
+        &cypher_account.clearing,
         &cypher_client::cache_account::id(),
         &account,
         &sub_account,
@@ -687,9 +688,6 @@ pub async fn withdraw(
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
-    // derive clearing address
-    let (public_clearing, _) = derive_public_clearing_address();
-
     // derive account address
     let (account, _account_bump) = if account_number.is_some() {
         derive_account_address(&keypair.pubkey(), account_number.unwrap())
@@ -698,6 +696,10 @@ pub async fn withdraw(
         derive_account_address(&keypair.pubkey(), 0)
     };
     println!("Using Account: {}", account);
+
+    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+        .await
+        .unwrap();
 
     // derive sub account address
     let (sub_account, _sub_account_bump) = if sub_account_number.is_some() {
@@ -756,7 +758,7 @@ pub async fn withdraw(
         };
 
     ixs.push(withdraw_funds(
-        &public_clearing,
+        &cypher_account.clearing,
         &cypher_client::cache_account::id(),
         &account,
         &sub_account,

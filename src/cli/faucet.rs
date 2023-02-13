@@ -95,7 +95,8 @@ pub async fn request_faucet(config: &CliConfig, mint: &Pubkey) -> Result<CliResu
         &token_account_address,
     ));
 
-    let sig = send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1))).await?;
+    let sig =
+        send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await?;
 
     println!(
         "Sucessfully submitted transaction. Signature: {}",
