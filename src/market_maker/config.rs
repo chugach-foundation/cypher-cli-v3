@@ -24,21 +24,18 @@ use crate::{
             builder::ContextBuilder, manager::ContextManager, ContextInfo, ExecutionContext,
             GlobalContext, OperationContext,
         },
-        hedger::{HedgerPulseResult},
+        hedger::HedgerPulseResult,
         info::{
             Accounts, FuturesMarketInfo, MarketMetadata, PerpMarketInfo, SpotMarketInfo, UserInfo,
         },
         inventory::InventoryManager,
-        maker::{Maker},
+        maker::Maker,
         oracle::{OracleInfo, OracleProvider},
         strategy::Strategy,
     },
     config::{Config, ConfigError},
     context::{
-        builders::{
-            derivatives::DerivativeContextBuilder,
-            spot::SpotContextBuilder,
-        },
+        builders::{derivatives::DerivativeContextBuilder, spot::SpotContextBuilder},
         cypher_manager::CypherExecutionContextManager,
     },
     market_maker::{
@@ -48,9 +45,7 @@ use crate::{
         making::{futures::FuturesMaker, perps::PerpsMaker, spot::SpotMaker},
     },
     oracle::cypher::CypherOracleProvider,
-    utils::accounts::{
-        get_or_create_orders_account, get_or_create_spot_orders_account,
-    },
+    utils::accounts::{get_or_create_orders_account, get_or_create_spot_orders_account},
 };
 
 use super::error::Error;

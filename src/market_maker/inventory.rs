@@ -1,16 +1,9 @@
-
-use {
-    fixed::types::I80F48,
-    log::info,
-    solana_sdk::pubkey::Pubkey,
-};
+use {fixed::types::I80F48, log::info, solana_sdk::pubkey::Pubkey};
 
 use crate::common::{
     context::GlobalContext,
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
 };
-
-
 
 pub struct ShapeFunctionInventoryManager {
     decimals: u8,

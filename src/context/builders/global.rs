@@ -4,7 +4,7 @@ use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{CacheContext, UserContext},
 };
-use log::{info};
+use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{

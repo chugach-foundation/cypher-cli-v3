@@ -4,8 +4,6 @@ use crate::common::{
 };
 use async_trait::async_trait;
 
-
-
 use super::RandomExecutionResult;
 
 pub struct RandomBehaviorStrategy {}

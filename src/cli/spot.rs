@@ -1,25 +1,26 @@
-use anchor_spl::dex::{serum_dex::state::OpenOrders, self};
+use anchor_spl::dex::{self, serum_dex::state::OpenOrders};
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
     instructions::{
-        new_spot_order as new_spot_order_ix, update_account_margin as update_account_margin_ix, settle_spot_funds,
+        new_spot_order as new_spot_order_ix, settle_spot_funds,
+        update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_coin_to_lots, convert_price_to_lots, derive_account_address,
-        derive_pool_node_vault_signer_address, derive_public_clearing_address,
-        derive_spot_open_orders_address, derive_sub_account_address, fixed_to_ui,
-        gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals,
+        convert_coin_to_decimals, convert_coin_to_lots, convert_price_to_decimals,
+        convert_price_to_lots, derive_account_address, derive_pool_node_vault_signer_address,
+        derive_public_clearing_address, derive_spot_open_orders_address,
+        derive_sub_account_address, fixed_to_ui, gen_dex_vault_signer_key,
     },
     Clearing, CypherAccount, NewSpotOrderArgs, OrderType, SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{CypherContext, SerumOrderBookContext},
-    utils::{get_cypher_zero_copy_account, send_transactions, get_program_accounts},
+    utils::{get_cypher_zero_copy_account, get_program_accounts, send_transactions},
 };
 use fixed::types::I80F48;
-use solana_client::rpc_filter::{RpcFilterType, MemcmpEncodedBytes, MemcmpEncoding, Memcmp};
+use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
@@ -30,7 +31,7 @@ use std::{
 
 use crate::{cli::CliError, utils::accounts::get_or_create_spot_orders_account};
 
-use super::{command::CliCommand, CliConfig, CliResult, orderbook::display_spot_orderbook};
+use super::{command::CliCommand, orderbook::display_spot_orderbook, CliConfig, CliResult};
 
 #[derive(Debug)]
 pub enum SpotSubCommand {
@@ -38,7 +39,7 @@ pub enum SpotSubCommand {
         pubkey: Option<Pubkey>,
     },
     Settle {
-        symbol: String
+        symbol: String,
     },
     Market {
         symbol: String,
@@ -168,7 +169,8 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                 Some(s) => s,
                 None => {
                     return Err(Box::new(CliError::BadParameters(
-                        "Symbol not provided, to see available markets try \"list pools\" command.".to_string(),
+                        "Symbol not provided, to see available markets try \"list pools\" command."
+                            .to_string(),
                     )));
                 }
             };
@@ -182,7 +184,8 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                 Some(s) => s,
                 None => {
                     return Err(Box::new(CliError::BadParameters(
-                        "Symbol not provided, to see available markets try \"list pools\" command.".to_string(),
+                        "Symbol not provided, to see available markets try \"list pools\" command."
+                            .to_string(),
                     )));
                 }
             };
@@ -195,8 +198,8 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                 Some(a) => Some(Pubkey::from_str(a).unwrap()),
                 None => None,
             };
-            Ok(CliCommand::Spot(SpotSubCommand::Orders{pubkey}))
-        },
+            Ok(CliCommand::Spot(SpotSubCommand::Orders { pubkey }))
+        }
         ("market", Some(matches)) => {
             // market symbol
             let symbol = match matches.value_of("symbol") {
@@ -342,7 +345,10 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
     }
 }
 
-pub async fn list_spot_open_orders(config: &CliConfig, pubkey: Option<Pubkey>) -> Result<CliResult, Box<dyn error::Error>> {
+pub async fn list_spot_open_orders(
+    config: &CliConfig,
+    pubkey: Option<Pubkey>,
+) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
@@ -369,14 +375,13 @@ pub async fn list_spot_open_orders(config: &CliConfig, pubkey: Option<Pubkey>) -
             encoding: Some(MemcmpEncoding::Binary),
         }),
     ];
-    let orders_accounts =
-        match get_program_accounts(rpc_client, filters, &dex::id()).await {
-            Ok(a) => a,
-            Err(e) => {
-                eprintln!("Failed to fetch Open Orders Accounts.");
-                return Err(Box::new(CliError::ClientError(e)));
-            }
-        };
+    let orders_accounts = match get_program_accounts(rpc_client, filters, &dex::id()).await {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("Failed to fetch Open Orders Accounts.");
+            return Err(Box::new(CliError::ClientError(e)));
+        }
+    };
 
     if orders_accounts.is_empty() {
         println!("No Orders Accounts found.");
@@ -487,12 +492,12 @@ pub async fn process_spot_market_order(
             return Err(Box::new(CliError::ContextError(e)));
         }
     };
-    let max_coin_qty = convert_coin_to_lots(size
-        .mul(I80F48::from(
+    let max_coin_qty = convert_coin_to_lots(
+        size.mul(I80F48::from(
             10u64.pow(asset_pool.state.config.decimals as u32),
         ))
         .to_num(),
-        market_ctx.state.coin_lot_size
+        market_ctx.state.coin_lot_size,
     );
 
     let impact_price = ob_ctx.get_impact_price(max_coin_qty, side);
@@ -519,7 +524,10 @@ pub async fn process_spot_market_order(
 
     let max_native_pc_qty_including_fees = {
         let max_quote_qty_without_fee = max_coin_qty * limit_price;
-        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000
+        (max_quote_qty_without_fee
+            * market_ctx.state.pc_lot_size
+            * (10_000 + user_fee_tier.taker_bps as u64))
+            / 10_000
     };
 
     println!(
@@ -533,7 +541,7 @@ pub async fn process_spot_market_order(
             I80F48::from(
                 convert_price_to_decimals(
                     limit_price,
-                    market_ctx.state.coin_lot_size, 
+                    market_ctx.state.coin_lot_size,
                     10u64.pow(asset_pool.state.config.decimals as u32),
                     market_ctx.state.pc_lot_size)
                 ),
@@ -600,7 +608,9 @@ pub async fn process_spot_market_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -740,7 +750,10 @@ pub async fn process_spot_limit_order(
         max_coin_qty * limit_price * market_ctx.state.pc_lot_size
     } else {
         let max_quote_qty_without_fee = max_coin_qty * limit_price;
-        (max_quote_qty_without_fee * market_ctx.state.pc_lot_size * (10_000 + user_fee_tier.taker_bps as u64)) / 10_000
+        (max_quote_qty_without_fee
+            * market_ctx.state.pc_lot_size
+            * (10_000 + user_fee_tier.taker_bps as u64))
+            / 10_000
     };
 
     println!(
@@ -754,7 +767,7 @@ pub async fn process_spot_limit_order(
             I80F48::from(
                 convert_price_to_decimals(
                     limit_price,
-                    market_ctx.state.coin_lot_size, 
+                    market_ctx.state.coin_lot_size,
                     10u64.pow(asset_pool.state.config.decimals as u32),
                     market_ctx.state.pc_lot_size)
                 ),
@@ -821,7 +834,9 @@ pub async fn process_spot_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -904,7 +919,7 @@ pub async fn process_spot_settle_funds(
         .collect::<Vec<Pubkey>>();
 
     let dex_vault_signer =
-    gen_dex_vault_signer_key(market_ctx.state.vault_signer_nonce, &market_ctx.address).unwrap();
+        gen_dex_vault_signer_key(market_ctx.state.vault_signer_nonce, &market_ctx.address).unwrap();
 
     let ixs = vec![
         update_account_margin_ix(
@@ -929,10 +944,12 @@ pub async fn process_spot_settle_funds(
             &market_ctx.base_vault,
             &market_ctx.quote_vault,
             &dex_vault_signer,
-        )
+        ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+        .await
+    {
         Ok(s) => s,
         Err(e) => {
             eprintln!("Failed to submit transaction.");
@@ -989,7 +1006,11 @@ pub async fn process_spot_book(
         }
     };
 
-    display_spot_orderbook(&book_ctx, &market_ctx.state, asset_pool.state.config.decimals);
+    display_spot_orderbook(
+        &book_ctx,
+        &market_ctx.state,
+        asset_pool.state.config.decimals,
+    );
 
     Ok(CliResult {})
 }

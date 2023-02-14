@@ -4,11 +4,10 @@ use cypher_client::Side;
 use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{
-        PoolContext, SerumEventQueueContext, SerumOpenOrdersContext,
-        SerumOrderBookContext,
+        PoolContext, SerumEventQueueContext, SerumOpenOrdersContext, SerumOrderBookContext,
     },
 };
-use log::{info};
+use log::info;
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{

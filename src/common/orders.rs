@@ -1,15 +1,6 @@
-
 use cypher_client::Side;
 
 use fixed::types::I80F48;
-
-
-
-
-
-
-
-
 
 #[derive(Default, Debug, Clone)]
 pub struct CandidateCancel {

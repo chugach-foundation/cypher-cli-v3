@@ -3,17 +3,11 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json;
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::signature::Keypair;
-use std::{
-    fmt::Debug,
-    fs::File,
-    path::PathBuf,
-    str::FromStr,
-    sync::Arc,
-};
+use std::{fmt::Debug, fs::File, path::PathBuf, str::FromStr, sync::Arc};
 use thiserror::Error;
 
 use crate::{
-    common::info::{UserInfo},
+    common::info::UserInfo,
     utils::accounts::{get_or_create_account, get_or_create_sub_account},
 };
 

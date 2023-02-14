@@ -11,10 +11,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
-use tokio::sync::{
-    broadcast::{Receiver},
-    RwLockReadGuard, RwLockWriteGuard,
-};
+use tokio::sync::{broadcast::Receiver, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{
     common::orders::InflightCancel,
@@ -23,7 +20,7 @@ use crate::{
 };
 
 use super::{
-    context::{OrdersContext},
+    context::OrdersContext,
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
     orders::{CandidateCancel, CandidatePlacement, ManagedOrder, OrdersInfo},
 };

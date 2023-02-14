@@ -3,8 +3,8 @@ use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
     instructions::{
-        cancel_futures_order, new_futures_order,
-        settle_futures_funds, update_account_margin as update_account_margin_ix,
+        cancel_futures_order, new_futures_order, settle_futures_funds,
+        update_account_margin as update_account_margin_ix,
     },
     utils::{
         convert_coin_to_decimals_fixed, convert_coin_to_lots, convert_price_to_decimals_fixed,
@@ -17,15 +17,10 @@ use cypher_client::{
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, UserContext},
-    utils::{
-        encode_string, get_cypher_zero_copy_account,
-        get_program_accounts, send_transactions,
-    },
+    utils::{encode_string, get_cypher_zero_copy_account, get_program_accounts, send_transactions},
 };
 use fixed::types::I80F48;
-use solana_client::{
-    rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType},
-};
+use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,

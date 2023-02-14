@@ -6,9 +6,7 @@ use cypher_client::{
 };
 use cypher_utils::utils::{get_cypher_zero_copy_account, get_program_accounts};
 
-use solana_client::{
-    rpc_filter::RpcFilterType,
-};
+use solana_client::rpc_filter::RpcFilterType;
 
 use std::{error, str::from_utf8};
 

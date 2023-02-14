@@ -15,10 +15,7 @@ use dashmap::DashMap;
 use log::{info, warn};
 use solana_client::nonblocking::rpc_client::RpcClient;
 
-use std::{
-    sync::Arc,
-    time::{SystemTime},
-};
+use std::{sync::Arc, time::SystemTime};
 use tokio::sync::{broadcast::Sender, RwLock};
 
 use crate::{

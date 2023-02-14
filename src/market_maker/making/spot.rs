@@ -23,10 +23,7 @@ use crate::common::info::{MarketMetadata, SpotMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
 
-use crate::common::orders::{
-    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder,
-};
-
+use crate::common::orders::{CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder};
 
 pub struct SpotMaker {
     rpc_client: Arc<RpcClient>,

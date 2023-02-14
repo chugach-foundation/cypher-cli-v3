@@ -1,9 +1,7 @@
-
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::cache_account;
 use cypher_utils::{
-    accounts_cache::AccountsCache, contexts::CypherContext,
-    services::StreamingAccountInfoService,
+    accounts_cache::AccountsCache, contexts::CypherContext, services::StreamingAccountInfoService,
 };
 
 use log::{info, warn};

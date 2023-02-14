@@ -1,6 +1,6 @@
-use anchor_spl::token::{spl_token};
+use anchor_spl::token::spl_token;
 use clap::{App, Arg, ArgMatches, SubCommand};
-use cypher_client::utils::{get_program_account};
+use cypher_client::utils::get_program_account;
 use cypher_utils::contexts::CypherContext;
 use cypher_utils::utils::{get_program_accounts, send_transactions};
 use faucet_client::{

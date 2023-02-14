@@ -9,7 +9,6 @@ use cypher_utils::contexts::{
 
 use solana_sdk::pubkey::Pubkey;
 
-
 /// Represents information about a certain operating context.
 /// This structure makes it easier to build out the remaining components used to operate.
 #[derive(Default, Clone)]
@@ -111,7 +110,7 @@ impl OrdersContext for ExecutionContext {
 }
 
 pub mod manager {
-    use super::{ExecutionContext};
+    use super::ExecutionContext;
     use async_trait::async_trait;
     use log::{info, warn};
     use std::sync::Arc;

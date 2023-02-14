@@ -2,9 +2,7 @@ use async_trait::async_trait;
 use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
 use cypher_client::instructions::{cancel_perp_order, new_perp_order};
 use cypher_client::utils::{convert_coin_to_lots, convert_price_to_lots};
-use cypher_client::{
-    cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs,
-};
+use cypher_client::{cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs};
 use cypher_utils::contexts::Order;
 use fixed::types::I80F48;
 use log::info;
@@ -23,10 +21,7 @@ use crate::common::info::{MarketMetadata, PerpMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
 
-use crate::common::orders::{
-    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder,
-};
-
+use crate::common::orders::{CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder};
 
 pub struct PerpsMaker {
     rpc_client: Arc<RpcClient>,
