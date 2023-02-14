@@ -91,7 +91,10 @@ impl ContextBuilder for GlobalContextBuilder {
             cache: ctx.cache.clone(),
             user: ctx.user.clone(),
         }) {
-            Ok(_) => Ok(()),
+            Ok(r) => {
+                info!("Successfully sent context update to {} receivers.", r);
+                Ok(())
+            }
             Err(e) => Err(ContextBuilderError::GlobalContextSendError(e)),
         }
     }

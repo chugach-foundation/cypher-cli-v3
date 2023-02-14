@@ -1,8 +1,7 @@
-use std::sync::Arc;
-
 use anchor_spl::dex::serum_dex::state::MarketState;
-use cypher_client::{FuturesMarket, PerpetualMarket};
+use cypher_client::{Clearing, FuturesMarket, PerpetualMarket};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair};
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub enum Accounts {
@@ -38,6 +37,14 @@ impl Default for UserInfo {
             signer: Arc::new(Keypair::new()),
         }
     }
+}
+
+#[derive(Default, Clone)]
+pub struct ClearingInfo {
+    /// The clearing state.
+    pub state: Box<Clearing>,
+    /// The clearing address.
+    pub address: Pubkey,
 }
 
 #[derive(Default, Debug, Clone)]

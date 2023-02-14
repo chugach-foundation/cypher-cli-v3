@@ -1,0 +1,7 @@
+{
+    "accountNumber": 0,
+    "subAccountNumber": 0,
+    "inner": {
+        "rebalance": true
+    }
+}

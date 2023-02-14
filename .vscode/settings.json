@@ -1,6 +1,6 @@
 {
     "rust-analyzer.server.extraEnv": {
-        "RUSTUP_TOOLCHAIN": "1.59.0-aarch64-apple-darwin"
+        "RUSTUP_TOOLCHAIN": "1.65.0-aarch64-apple-darwin"
     },
     "[rust]": {
         "editor.formatOnSave": true

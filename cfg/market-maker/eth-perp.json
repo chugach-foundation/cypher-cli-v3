@@ -1,20 +1,22 @@
 {
     "accountNumber": 0,
     "subAccountNumber": 0,
-    "makerConfig": {
-        "maxQuote": 50,
-        "spread": 10,
-        "layers": 6,
-        "spacingBps": 15,
-        "timeInForce": 20,
-        "symbol": "ETH-PERP"
-    },
-    "inventoryConfig": {
-        "expBase": 2,
-        "shapeNumerator": 1,
-        "shapeDenominator": 100000
-    },
-    "hedgerConfig": {
-        "symbol": "ETH1!"
+    "inner": {
+        "makerConfig": {
+            "maxQuote": 100,
+            "spread": 10,
+            "layers": 5,
+            "spacingBps": 10,
+            "timeInForce": 20,
+            "symbol": "ETH-PERP"
+        },
+        "inventoryConfig": {
+            "expBase": 2,
+            "shapeNumerator": 1,
+            "shapeDenominator": 100000
+        },
+        "hedgerConfig": {
+            "symbol": "ETH1!"
+        }
     }
 }

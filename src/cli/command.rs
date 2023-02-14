@@ -49,9 +49,11 @@ pub enum CliCommand {
     Futures(FuturesSubCommand),
     Perpetuals(PerpetualsSubCommand),
     Spot(SpotSubCommand),
-    Liquidator,
+    Liquidator {
+        config_path: String,
+    },
     MarketMaker {
-        path: String,
+        config_path: String,
     },
     Random {
         interval: u64,
@@ -114,9 +116,11 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             Ok(r) => Ok(r),
             Err(e) => Err(Box::new(CliError::ClientError(e))),
         },
-        CliCommand::Liquidator => process_liquidator_command(config),
-        CliCommand::MarketMaker { path } => {
-            process_market_maker_command(config, path.as_str()).await
+        CliCommand::Liquidator { config_path } => {
+            process_liquidator_command(config, config_path.as_str()).await
+        }
+        CliCommand::MarketMaker { config_path } => {
+            process_market_maker_command(config, config_path.as_str()).await
         }
         CliCommand::Random {
             interval,

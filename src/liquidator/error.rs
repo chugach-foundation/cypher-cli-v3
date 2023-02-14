@@ -9,4 +9,10 @@ pub enum Error {
     InvalidConfig(ConfigError),
     #[error(transparent)]
     ClientError(#[from] ClientError),
+    #[error(transparent)]
+    AnchorError(#[from] anchor_lang::error::Error),
+    #[error("Liquidator c-ratio below initialization.")]
+    LiquidatorCRatio,
+    #[error("An unrecognized account was received.")]
+    UnrecognizedAccount,
 }

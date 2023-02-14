@@ -6,9 +6,11 @@ use cypher_client::{
         create_sub_account as create_sub_account_ix, init_spot_open_orders,
     },
     utils::{derive_account_address, derive_public_clearing_address, derive_sub_account_address},
-    CypherAccount, CypherSubAccount, OrdersAccount,
+    Clearing, CypherAccount, CypherSubAccount, OrdersAccount,
 };
-use cypher_utils::utils::{get_cypher_zero_copy_account, get_dex_account, send_transactions};
+use cypher_utils::utils::{
+    get_cypher_program_account, get_cypher_zero_copy_account, get_dex_account, send_transactions,
+};
 use log::info;
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};

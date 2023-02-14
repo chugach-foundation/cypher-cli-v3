@@ -21,12 +21,12 @@ use crate::{
         oracle::{OracleInfo, OracleProvider},
         strategy::Strategy,
     },
+    config::{get_user_info, Config, ConfigError, PersistentConfig},
     context::builders::global::GlobalContextBuilder,
     market_maker::{
         config::{
             get_context_builder, get_context_info, get_context_manager_from_config,
-            get_hedger_from_config, get_maker_from_config, get_oracle_provider, get_user_info,
-            load_config, Config, ConfigError,
+            get_hedger_from_config, get_maker_from_config, get_oracle_provider, MarketMakerConfig,
         },
         error::Error,
     },
@@ -64,7 +64,7 @@ pub fn parse_market_maker_command(
 ) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("run", Some(matches)) => {
-            let path = match matches.value_of("config") {
+            let config_path = match matches.value_of("config") {
                 Some(s) => s,
                 None => {
                     return Err(Box::new(CliError::BadParameters(
@@ -73,7 +73,7 @@ pub fn parse_market_maker_command(
                 }
             };
             Ok(CliCommand::MarketMaker {
-                path: path.to_string(),
+                config_path: config_path.to_string(),
             })
         }
         ("", None) => {
@@ -99,7 +99,7 @@ pub async fn process_market_maker_command(
 
     let shutdown_sender = Arc::new(channel::<bool>(1).0);
 
-    let mm_config = match load_config(config_path) {
+    let config: Config<MarketMakerConfig> = match PersistentConfig::load(config_path) {
         Ok(c) => c,
         Err(e) => {
             warn!("There was an error loading config: {}", e.to_string());
@@ -120,15 +120,16 @@ pub async fn process_market_maker_command(
         }
     };
 
-    let user_info = match get_user_info(rpc_client.clone(), &mm_config, keypair).await {
-        Ok(ui) => ui,
-        Err(e) => {
-            warn!("There was an error getting user info: {}", e.to_string());
-            return Err(Box::new(CliError::MarketMaker(e)));
-        }
-    };
+    let user_info =
+        match get_user_info::<MarketMakerConfig>(rpc_client.clone(), &config, keypair).await {
+            Ok(ui) => ui,
+            Err(e) => {
+                warn!("There was an error getting user info: {}", e.to_string());
+                return Err(Box::new(CliError::MarketMaker(Error::ClientError(e))));
+            }
+        };
 
-    let maker_symbol = mm_config.maker_config.symbol.as_str();
+    let maker_symbol = config.inner.maker_config.symbol.as_str();
     let maker_context_info =
         match get_context_info(rpc_client.clone(), &cypher_ctx, &user_info, maker_symbol).await {
             Ok(mci) => mci,
@@ -141,7 +142,7 @@ pub async fn process_market_maker_command(
             }
         };
 
-    let hedger_symbol = mm_config.hedger_config.symbol.as_str();
+    let hedger_symbol = config.inner.hedger_config.symbol.as_str();
     let hedger_context_info =
         match get_context_info(rpc_client.clone(), &cypher_ctx, &user_info, hedger_symbol).await {
             Ok(hci) => hci,
@@ -246,7 +247,7 @@ pub async fn process_market_maker_command(
         >,
     > = match get_context_manager_from_config(
         &cypher_ctx,
-        &mm_config,
+        &config,
         shutdown_sender.clone(),
         global_context_builder.clone(),
         maker_context_builder.clone(),
@@ -270,7 +271,7 @@ pub async fn process_market_maker_command(
         >,
     > = match get_context_manager_from_config(
         &cypher_ctx,
-        &mm_config,
+        &config,
         shutdown_sender.clone(),
         global_context_builder.clone(),
         hedger_context_builder.clone(),
@@ -292,7 +293,7 @@ pub async fn process_market_maker_command(
         maker_context_manager.sender(),
         &cypher_ctx,
         &maker_context_info,
-        &mm_config,
+        &config,
     )
     .await
     {
@@ -448,6 +449,10 @@ pub async fn process_market_maker_command(
         shutdown_sender.subscribe(),
         &vec![],
     ));
+    let streaming_account_service_clone = streaming_account_service.clone();
+    let streaming_account_service_handle = tokio::spawn(async move {
+        streaming_account_service_clone.start_service().await;
+    });
 
     let mut remaining_accounts = maker_context_info.context_accounts();
     remaining_accounts.extend(hedger_context_info.context_accounts());
@@ -482,6 +487,7 @@ pub async fn process_market_maker_command(
         maker_context_manager_handle,
         hedger_context_manager_handle,
         maker_handle,
+        streaming_account_service_handle
     );
 
     Ok(CliResult {})

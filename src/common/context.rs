@@ -189,12 +189,12 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("[{}] There was an error receiving global context update.",  symbol);
+                                warn!("[{}] There was an error receiving global context update.", symbol);
                                 continue;
                             }
                         }
@@ -208,12 +208,12 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("[{}] There was an error receiving operation context update.",  symbol);
+                                warn!("[{}] There was an error receiving operation context update.", symbol);
                                 continue;
                             }
                         }
@@ -227,18 +227,18 @@ pub mod manager {
                                 match self.send().await {
                                     Ok(()) => (),
                                     Err(e) => {
-                                        warn!("[{}] There was an error sending execution context update: {:?}",  symbol, e.to_string());
+                                        warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
                             Err(_) => {
-                                warn!("[{}] There was an error receiving oracle update.",  symbol);
+                                warn!("[{}] There was an error receiving oracle update.", symbol);
                                 continue;
                             }
                         }
                     }
                     _ = shutdown_receiver.recv() => {
-                        info!("[{}] Shutdown signal received, stopping..",  symbol);
+                        info!("[{}] Shutdown signal received, stopping..", symbol);
                         break;
                     }
                 }
@@ -269,7 +269,7 @@ pub mod manager {
 pub mod builder {
     use super::{ExecutionContext, GlobalContext, OperationContext};
     use async_trait::async_trait;
-    use cypher_utils::accounts_cache::AccountState;
+    use cypher_utils::{accounts_cache::AccountState, contexts::UserContext};
     use log::{info, warn};
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
@@ -282,6 +282,8 @@ pub mod builder {
         OperationContextSendError(SendError<OperationContext>),
         #[error("Global context send error: {:?}", self)]
         GlobalContextSendError(SendError<GlobalContext>),
+        #[error("Users context send error: {:?}", self)]
+        UsersContextSendError(SendError<UserContext>),
         #[error("Process update error: {0}")]
         ProcessUpdateError(String),
         #[error("Unrecognized account error: {0}")]
@@ -320,7 +322,7 @@ pub mod builder {
                                         match self.send().await {
                                             Ok(()) => (),
                                             Err(e) => {
-                                                warn!("[{}] There was an error sending operation context update: {:?}",  symbol, e.to_string());
+                                                warn!("[{}] There was an error sending context update: {:?}", symbol, e.to_string());
                                             }
                                         };
                                     },
@@ -328,12 +330,12 @@ pub mod builder {
                                 };
                             },
                             Err(e) => {
-                                warn!("[{}] There was an error receiving account state update.",  symbol);
+                                warn!("[{}] There was an error receiving account state update.", symbol);
                             }
                         }
                     }
                     _ = shutdown_receiver.recv() => {
-                        info!("[{}] Shutdown signal received, stopping..",  symbol);
+                        info!("[{}] Shutdown signal received, stopping..", symbol);
                         break;
                     }
                 }

@@ -1,5 +1,6 @@
 use {
     self::command::CliCommand,
+    crate::liquidator::error::Error as LiquidatorError,
     crate::market_maker::error::Error as MarketMakerError,
     cypher_utils::{contexts::ContextError, utils::KeypairError},
     solana_client::{
@@ -69,4 +70,6 @@ pub enum CliError {
     KeypairError(KeypairError),
     #[error("Market maker error: {:?}", self)]
     MarketMaker(MarketMakerError),
+    #[error("Liquidator error: {:?}", self)]
+    Liquidator(LiquidatorError),
 }

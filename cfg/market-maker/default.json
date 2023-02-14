@@ -1,20 +1,22 @@
 {
     "accountNumber": 0,
     "subAccountNumber": 0,
-    "makerConfig": {
-        "maxQuote": 50,
-        "spread": 20,
-        "layers": 5,
-        "spacingBps": 20,
-        "timeInForce": 20,
-        "symbol": "SOL-PERP"
-    },
-    "inventoryConfig": {
-        "expBase": 2,
-        "shapeNumerator": 1,
-        "shapeDenominator": 100000
-    },
-    "hedgerConfig": {
-        "symbol": "SOL1!"
+    "inner": {
+        "makerConfig": {
+            "maxQuote": 1,
+            "spread": 25,
+            "layers": 3,
+            "spacingBps": 10,
+            "timeInForce": 30,
+            "symbol": "SOL-PERP"
+        },
+        "inventoryConfig": {
+            "expBase": 2,
+            "shapeNumerator": 1,
+            "shapeDenominator": 100000
+        },
+        "hedgerConfig": {
+            "symbol": "SOL1!"
+        }
     }
 }

@@ -1,20 +1,22 @@
 {
     "accountNumber": 0,
     "subAccountNumber": 0,
-    "makerConfig": {
-        "maxQuote": 25,
-        "spread": 15,
-        "layers": 6,
-        "spacingBps": 15,
-        "timeInForce": 20,
-        "symbol": "BTC-PERP"
-    },
-    "inventoryConfig": {
-        "expBase": 2,
-        "shapeNumerator": 1,
-        "shapeDenominator": 100000
-    },
-    "hedgerConfig": {
-        "symbol": "BTC1!"
+    "inner": {
+        "makerConfig": {
+            "maxQuote": 2.5,
+            "spread": 15,
+            "layers": 6,
+            "spacingBps": 15,
+            "timeInForce": 20,
+            "symbol": "BTC-PERP"
+        },
+        "inventoryConfig": {
+            "expBase": 2,
+            "shapeNumerator": 1,
+            "shapeDenominator": 100000
+        },
+        "hedgerConfig": {
+            "symbol": "BTC"
+        }
     }
 }

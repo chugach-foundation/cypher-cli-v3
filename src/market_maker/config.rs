@@ -36,6 +36,7 @@ use crate::{
         orders::{ManagedOrder, OrdersInfo},
         strategy::Strategy,
     },
+    config::{Config, ConfigError},
     context::{
         builders::{
             derivatives::DerivativeContextBuilder, global::GlobalContextBuilder,
@@ -58,20 +59,12 @@ use crate::{
 
 use super::error::Error;
 
-#[derive(Debug, Error)]
-pub enum ConfigError {
-    #[error("Unrecognized symbol: {0}")]
-    UnrecognizedSymbol(String),
-}
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Config {
-    pub account_number: u8,
-    pub sub_account_number: u8,
+pub struct MarketMakerConfig {
     pub maker_config: MakerConfig,
-    pub hedger_config: HedgerConfig,
     pub inventory_config: InventoryConfig,
+    pub hedger_config: HedgerConfig,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -106,62 +99,6 @@ pub struct InventoryConfig {
 pub struct HedgerConfig {
     /// the symbol of the market to hedge
     pub symbol: String,
-}
-
-pub fn load_config(path: &str) -> Result<Config, Box<dyn error::Error>> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let mm_config: Config = serde_json::from_reader(reader).unwrap();
-    Ok(mm_config)
-}
-
-/// Gets the user's info required to
-pub async fn get_user_info(
-    rpc_client: Arc<RpcClient>,
-    config: &Config,
-    keypair: &Keypair,
-) -> Result<UserInfo, Error> {
-    info!("Preparing user info..");
-
-    // we'll do this because we can't clone the keypair
-    let signer = Arc::new(Keypair::from_bytes(&keypair.to_bytes()).unwrap());
-
-    let (account_state, master_account) =
-        match get_or_create_account(&rpc_client, &keypair, config.account_number).await {
-            Ok(a) => a,
-            Err(e) => {
-                warn!(
-                    "There was an error getting or creating Cypher account: {}",
-                    e.to_string()
-                );
-                return Err(Error::ClientError(e));
-            }
-        };
-
-    let (sub_acccount_state, sub_account) = match get_or_create_sub_account(
-        &rpc_client,
-        &keypair,
-        &master_account,
-        config.sub_account_number,
-    )
-    .await
-    {
-        Ok(a) => a,
-        Err(e) => {
-            warn!(
-                "There was an error getting or creating Cypher sub account: {}",
-                e.to_string()
-            );
-            return Err(Error::ClientError(e));
-        }
-    };
-
-    Ok(UserInfo {
-        master_account,
-        sub_account,
-        clearing: account_state.clearing,
-        signer,
-    })
 }
 
 /// Gets the [`ContextInfo`] for the given symbol, which allows much easier construction of necessary components.
@@ -374,7 +311,7 @@ pub async fn get_maker_from_config(
     context_sender: Arc<Sender<ExecutionContext>>,
     cypher_ctx: &CypherContext,
     context_info: &ContextInfo,
-    config: &Config,
+    config: &Config<MarketMakerConfig>,
 ) -> Result<
     Arc<dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send>,
     Error,
@@ -383,10 +320,10 @@ pub async fn get_maker_from_config(
 
     info!(
         "Inventory management - Max quote: {} - Target Spread: {} bps - Layers: {} - Spacing: {} bps",
-        config.maker_config.max_quote,
-        config.maker_config.spread,
-        config.maker_config.layers,
-        config.maker_config.spacing_bps
+        config.inner.maker_config.max_quote,
+        config.inner.maker_config.spread,
+        config.inner.maker_config.layers,
+        config.inner.maker_config.spacing_bps
     );
     let decimals = get_decimals_for_symbol(cypher_ctx, context_info.symbol.as_str()).await?;
 
@@ -407,12 +344,12 @@ pub async fn get_maker_from_config(
             market_identifier,
             is_derivative,
             decimals,
-            config.inventory_config.exp_base,
-            I80F48::from_num::<f64>(config.maker_config.max_quote),
-            I80F48::from(config.inventory_config.shape_numerator),
-            I80F48::from(config.inventory_config.shape_denominator),
+            config.inner.inventory_config.exp_base,
+            I80F48::from_num::<f64>(config.inner.maker_config.max_quote),
+            I80F48::from(config.inner.inventory_config.shape_numerator),
+            I80F48::from(config.inner.inventory_config.shape_denominator),
             I80F48::from(BPS_UNIT)
-                .checked_add(I80F48::from(config.maker_config.spread))
+                .checked_add(I80F48::from(config.inner.maker_config.spread))
                 .and_then(|n| n.checked_div(I80F48::from(BPS_UNIT)))
                 .unwrap(),
         ));
@@ -429,9 +366,9 @@ pub async fn get_maker_from_config(
             context_info.user_accounts.clone(),
             f.clone(),
             context_info.market_metadata.clone(),
-            config.maker_config.layers as usize,
-            config.maker_config.spacing_bps,
-            config.maker_config.time_in_force,
+            config.inner.maker_config.layers as usize,
+            config.inner.maker_config.spacing_bps,
+            config.inner.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
         Accounts::Perpetuals(p) => Arc::new(PerpsMaker::new(
@@ -443,9 +380,9 @@ pub async fn get_maker_from_config(
             context_info.user_accounts.clone(),
             p.clone(),
             context_info.market_metadata.clone(),
-            config.maker_config.layers as usize,
-            config.maker_config.spacing_bps,
-            config.maker_config.time_in_force,
+            config.inner.maker_config.layers as usize,
+            config.inner.maker_config.spacing_bps,
+            config.inner.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
         Accounts::Spot(s) => Arc::new(SpotMaker::new(
@@ -457,9 +394,9 @@ pub async fn get_maker_from_config(
             context_info.user_accounts.clone(),
             s.clone(),
             context_info.market_metadata.clone(),
-            config.maker_config.layers as usize,
-            config.maker_config.spacing_bps,
-            config.maker_config.time_in_force,
+            config.inner.maker_config.layers as usize,
+            config.inner.maker_config.spacing_bps,
+            config.inner.maker_config.time_in_force,
             context_info.symbol.to_string(),
         )),
     };
@@ -543,7 +480,7 @@ pub async fn get_context_builder(
 /// Gets the appropriate [`ContextManager`] for the given config.
 pub fn get_context_manager_from_config(
     ctx: &CypherContext,
-    config: &Config,
+    config: &Config<MarketMakerConfig>,
     shutdown_sender: Arc<Sender<bool>>,
     global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,
     operation_context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send>,
@@ -559,7 +496,7 @@ pub fn get_context_manager_from_config(
     >,
     Error,
 > {
-    let symbol = &config.hedger_config.symbol;
+    let symbol = &config.inner.hedger_config.symbol;
     info!("Preparing Context Manager for {}", symbol);
 
     let context_manager: Arc<
