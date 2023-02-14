@@ -20,7 +20,7 @@ impl UserAccountsInfo {
 
         let account_keys: Vec<_> = sub_accounts
             .iter()
-            .map(|(idx, sa)| self.sub_account_addresses[*idx])
+            .map(|(idx, _sa)| self.sub_account_addresses[*idx])
             .collect();
         (
             account_keys.to_vec(),
@@ -38,7 +38,7 @@ impl UserAccountsInfo {
 
         let account_keys: Vec<_> = sub_accounts
             .iter()
-            .map(|(idx, sa)| self.sub_account_addresses[*idx])
+            .map(|(idx, _sa)| self.sub_account_addresses[*idx])
             .collect();
         (
             account_keys.to_vec(),

@@ -257,7 +257,6 @@ pub async fn close_account(
     let rpc_client = config.rpc_client.as_ref().unwrap();
     let keypair = config.keypair.as_ref().unwrap();
 
-    let (public_clearing, _) = derive_public_clearing_address();
     let (account, _) = if account_number.is_some() {
         derive_account_address(&keypair.pubkey(), account_number.unwrap())
     } else {

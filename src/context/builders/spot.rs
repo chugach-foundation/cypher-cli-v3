@@ -4,11 +4,11 @@ use cypher_client::Side;
 use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{
-        ContextError, PoolContext, SerumEventQueueContext, SerumOpenOrdersContext,
+        PoolContext, SerumEventQueueContext, SerumOpenOrdersContext,
         SerumOrderBookContext,
     },
 };
-use log::{info, warn};
+use log::{info};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{
@@ -37,7 +37,7 @@ pub struct SpotContextState {
 }
 
 impl SpotContextState {
-    fn update_asset_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+    fn update_asset_pool(&mut self, _pool: &Pubkey, data: &[u8]) {
         self.asset_pool.reload_from_account_data(data);
     }
 
@@ -46,7 +46,7 @@ impl SpotContextState {
             .reload_pool_node_from_account_data(pool_node, data);
     }
 
-    fn update_quote_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+    fn update_quote_pool(&mut self, _pool: &Pubkey, data: &[u8]) {
         self.quote_pool.reload_from_account_data(data);
     }
 
@@ -55,15 +55,15 @@ impl SpotContextState {
             .reload_pool_node_from_account_data(pool_node, data);
     }
 
-    fn update_event_queue(&mut self, market: &Pubkey, event_queue: &Pubkey, data: &[u8]) {
+    fn update_event_queue(&mut self, _market: &Pubkey, _event_queue: &Pubkey, data: &[u8]) {
         self.event_queue.reload_from_account_data(data);
     }
 
     fn update_orderbook(
         &mut self,
-        market: &Pubkey,
-        bids: &Pubkey,
-        asks: &Pubkey,
+        _market: &Pubkey,
+        _bids: &Pubkey,
+        _asks: &Pubkey,
         market_state: &MarketState,
         data: &[u8],
         side: Side,
@@ -72,7 +72,7 @@ impl SpotContextState {
             .reload_from_account_data(market_state, data, side);
     }
 
-    fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
+    fn update_open_orders(&mut self, _account: &Pubkey, data: &[u8]) {
         self.open_orders.reload_from_account_data(data);
     }
 }

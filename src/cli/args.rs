@@ -1,6 +1,5 @@
 use clap::ArgMatches;
 use cypher_utils::utils::load_keypair;
-use log::info;
 use solana_clap_utils::input_validators::{is_url_or_moniker, normalize_to_url_if_moniker};
 use solana_client::nonblocking::{pubsub_client::PubsubClient, rpc_client::RpcClient};
 use solana_sdk::{commitment_config::CommitmentConfig, signer::Signer};
@@ -15,7 +14,7 @@ pub async fn parse_args(matches: &ArgMatches<'_>) -> Result<CliConfig, Box<dyn e
     let pubsub_rpc_url = matches.value_of("pubsub_rpc_url");
     let keypair_path = matches.value_of("keypair").unwrap();
 
-    let (is_moniker, is_valid_url) = match is_url_or_moniker(json_rpc_url) {
+    let (_is_moniker, _is_valid_url) = match is_url_or_moniker(json_rpc_url) {
         Ok(_) => (false, true),
         Err(_) => match json_rpc_url.as_ref() {
             "m" | "mainnet-beta" => (true, true),
@@ -44,7 +43,7 @@ pub async fn parse_args(matches: &ArgMatches<'_>) -> Result<CliConfig, Box<dyn e
         println!("Using PubSub RPC WS URL: {}", pubsub_url);
         match PubsubClient::new(pubsub_url).await {
             Ok(pc) => (Some(Arc::new(pc)), "".to_string()),
-            Err(e) => {
+            Err(_e) => {
                 // do not throw an error just yet as the pubsub client might not actually be needed
                 (None, "".to_string())
             }

@@ -3,8 +3,8 @@ use crate::common::{
     strategy::{Strategy, StrategyError},
 };
 use async_trait::async_trait;
-use log::info;
-use std::error;
+
+
 
 use super::RandomExecutionResult;
 
@@ -17,7 +17,7 @@ impl Strategy for RandomBehaviorStrategy {
 
     async fn execute(
         &self,
-        ctx: &ExecutionContext,
+        _ctx: &ExecutionContext,
     ) -> Result<RandomExecutionResult, StrategyError> {
         Ok(RandomExecutionResult {})
     }

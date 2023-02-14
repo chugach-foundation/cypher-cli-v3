@@ -8,11 +8,11 @@ use solana_sdk::{instruction::Instruction, signature::Keypair};
 use std::{
     ops::{Add, Div, Mul, Sub},
     sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use thiserror::Error;
 use tokio::sync::{
-    broadcast::{error::SendError, Receiver, Sender},
+    broadcast::{Receiver},
     RwLockReadGuard, RwLockWriteGuard,
 };
 
@@ -23,8 +23,7 @@ use crate::{
 };
 
 use super::{
-    context::{ExecutionContext, OrdersContext},
-    info::{Accounts, UserInfo},
+    context::{OrdersContext},
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
     orders::{CandidateCancel, CandidatePlacement, ManagedOrder, OrdersInfo},
 };
@@ -154,7 +153,7 @@ pub trait Maker: Send + Sync {
                                 }
                             };
                         },
-                        Err(e) => {
+                        Err(_e) => {
                             warn!("[{}] There was an error receiving maker input context update.",  symbol);
                         }
                     }
@@ -449,7 +448,7 @@ pub trait Maker: Send + Sync {
                 candidate_cancel.layer == candidate_placement.layer
                     && candidate_cancel.side == candidate_placement.side
             }) {
-                Some(c) => {
+                Some(_c) => {
                     info!(
                         "[{}] Final candidate - {:?} - {:.5} @ {:.5}",
                         self.symbol(),
@@ -713,7 +712,7 @@ pub trait Maker: Send + Sync {
                 symbol,
                 inflight_orders_to_remove.len(),
             );
-            let mut managed_orders = self.managed_orders_writer().await;
+            let _managed_orders = self.managed_orders_writer().await;
 
             // remove these confirmed orders from the ones we are tracking
             for order in inflight_orders_to_remove.iter() {

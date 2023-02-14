@@ -4,11 +4,10 @@ use cypher_client::{Market, Side};
 use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{
-        AgnosticEventQueueContext, AgnosticOpenOrdersContext, AgnosticOrderBookContext,
-        ContextError, MarketContext, PoolContext,
+        AgnosticEventQueueContext, AgnosticOpenOrdersContext, AgnosticOrderBookContext, MarketContext, PoolContext,
     },
 };
-use log::{info, warn};
+use log::{info};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{
@@ -40,7 +39,7 @@ impl<T> DerivativeContextState<T>
 where
     T: Default + Market + ZeroCopy + Owner + Send + Sync,
 {
-    fn update_quote_pool(&mut self, pool: &Pubkey, data: &[u8]) {
+    fn update_quote_pool(&mut self, _pool: &Pubkey, data: &[u8]) {
         self.quote_pool.reload_from_account_data(data);
     }
 
@@ -49,19 +48,19 @@ where
             .reload_pool_node_from_account_data(pool_node, data);
     }
 
-    fn update_market(&mut self, market: &Pubkey, data: &[u8]) {
+    fn update_market(&mut self, _market: &Pubkey, data: &[u8]) {
         self.market.reload_from_account_data(data);
     }
 
-    fn update_event_queue(&mut self, market: &Pubkey, event_queue: &Pubkey, data: &[u8]) {
+    fn update_event_queue(&mut self, _market: &Pubkey, _event_queue: &Pubkey, data: &[u8]) {
         self.event_queue.reload_from_account_data(data);
     }
 
     fn update_orderbook(
         &mut self,
-        market: &Pubkey,
-        bids: &Pubkey,
-        asks: &Pubkey,
+        _market: &Pubkey,
+        _bids: &Pubkey,
+        _asks: &Pubkey,
         market_state: &dyn Market,
         data: &[u8],
         side: Side,
@@ -70,7 +69,7 @@ where
             .reload_from_account_data(market_state, data, side);
     }
 
-    fn update_open_orders(&mut self, account: &Pubkey, data: &[u8]) {
+    fn update_open_orders(&mut self, _account: &Pubkey, data: &[u8]) {
         self.open_orders.reload_from_account_data(data);
     }
 }

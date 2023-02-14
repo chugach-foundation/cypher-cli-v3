@@ -18,15 +18,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::common::context::{ExecutionContext, GlobalContext, OperationContext};
+use crate::common::context::{ExecutionContext, GlobalContext};
 use crate::common::info::{MarketMetadata, SpotMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
-use crate::common::oracle::OracleInfo;
+
 use crate::common::orders::{
-    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrdersInfo,
+    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder,
 };
-use crate::common::strategy::{Strategy, StrategyError};
+
 
 pub struct SpotMaker {
     rpc_client: Arc<RpcClient>,

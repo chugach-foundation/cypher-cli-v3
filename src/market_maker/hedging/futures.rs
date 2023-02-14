@@ -20,7 +20,7 @@ impl FuturesHedger {
 impl Hedger for FuturesHedger {
     type Input = ExecutionContext;
 
-    fn pulse(&self, input: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
+    fn pulse(&self, _input: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
         info!("[{}] Running cypher futures hedger logic..", self.symbol);
 
         Ok(HedgerPulseResult::default())

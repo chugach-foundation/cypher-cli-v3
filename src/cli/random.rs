@@ -80,13 +80,13 @@ pub fn parse_random_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn 
 
 pub async fn process_random_command(
     config: &CliConfig,
-    interval: u64,
+    _interval: u64,
     output_keypair: &Option<String>,
     input_keypair: &Option<String>,
 ) -> Result<CliResult, Box<dyn error::Error>> {
     _ = init_logger();
-    let rpc_client = config.rpc_client.as_ref().unwrap();
-    let pubsub_client = config.pubsub_client.as_ref().unwrap();
+    let _rpc_client = config.rpc_client.as_ref().unwrap();
+    let _pubsub_client = config.pubsub_client.as_ref().unwrap();
 
     let keypair = if input_keypair.is_some() {
         let input_filename = input_keypair.as_ref().unwrap();
@@ -108,7 +108,7 @@ pub async fn process_random_command(
 
     info!("Setting up components from config..");
 
-    let shutdown_sender = Arc::new(channel::<bool>(1).0);
+    let _shutdown_sender = Arc::new(channel::<bool>(1).0);
 
     info!("Let's dance! 🔥💃");
 

@@ -3,7 +3,7 @@ use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
     instructions::{
-        cancel_futures_order, create_orders_account as create_orders_account_ix, new_futures_order,
+        cancel_futures_order, new_futures_order,
         settle_futures_funds, update_account_margin as update_account_margin_ix,
     },
     utils::{
@@ -13,26 +13,24 @@ use cypher_client::{
         derive_sub_account_address, fixed_to_ui, get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
-    OrdersAccount, SelfTradeBehavior, Side,
+    OrdersAccount, Side,
 };
 use cypher_utils::{
-    contexts::{AgnosticOrderBookContext, CypherContext, MarketContext, UserContext},
+    contexts::{AgnosticOrderBookContext, CypherContext, UserContext},
     utils::{
-        encode_string, get_cypher_program_account, get_cypher_zero_copy_account,
+        encode_string, get_cypher_zero_copy_account,
         get_program_accounts, send_transactions,
     },
 };
 use fixed::types::I80F48;
 use solana_client::{
-    client_error::{reqwest::Client, ClientError},
     rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType},
 };
-use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
     ops::{Add, Mul},
     str::{from_utf8, FromStr},
-    sync::Arc,
 };
 
 use crate::{
@@ -779,7 +777,7 @@ pub async fn process_futures_market_order(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -1019,7 +1017,7 @@ pub async fn process_futures_close(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -1192,7 +1190,7 @@ pub async fn process_futures_limit_order(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,

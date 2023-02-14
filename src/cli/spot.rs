@@ -8,16 +8,15 @@ use cypher_client::{
     },
     utils::{
         convert_coin_to_lots, convert_price_to_lots, derive_account_address,
-        derive_orders_account_address, derive_pool_address, derive_pool_node_address,
         derive_pool_node_vault_signer_address, derive_public_clearing_address,
         derive_spot_open_orders_address, derive_sub_account_address, fixed_to_ui,
-        gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals, convert_pc_to_decimals,
+        gen_dex_vault_signer_key, convert_price_to_decimals, convert_coin_to_decimals,
     },
     Clearing, CypherAccount, NewSpotOrderArgs, OrderType, SelfTradeBehavior, Side,
 };
 use cypher_utils::{
     contexts::{CypherContext, SerumOrderBookContext},
-    utils::{encode_string, get_cypher_zero_copy_account, send_transactions, get_program_accounts},
+    utils::{get_cypher_zero_copy_account, send_transactions, get_program_accounts},
 };
 use fixed::types::I80F48;
 use solana_client::rpc_filter::{RpcFilterType, MemcmpEncodedBytes, MemcmpEncoding, Memcmp};
@@ -354,7 +353,7 @@ pub async fn list_spot_open_orders(config: &CliConfig, pubkey: Option<Pubkey>) -
     };
     println!("Using Authority: {}", authority);
 
-    let ctx = match CypherContext::load(rpc_client).await {
+    let _ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
             eprintln!("Failed to load Cypher Context.");
@@ -455,7 +454,7 @@ pub async fn process_spot_market_order(
         .map(|c| c.sub_account)
         .collect::<Vec<Pubkey>>();
 
-    let orders_account_state = match get_or_create_spot_orders_account(
+    let _orders_account_state = match get_or_create_spot_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -702,7 +701,7 @@ pub async fn process_spot_limit_order(
         .map(|c| c.sub_account)
         .collect::<Vec<Pubkey>>();
 
-    let orders_account_state = match get_or_create_spot_orders_account(
+    let _orders_account_state = match get_or_create_spot_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -847,7 +846,7 @@ pub async fn process_spot_settle_funds(
 
     let (public_clearing, _) = derive_public_clearing_address();
 
-    let clearing =
+    let _clearing =
         match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
             Ok(ctx) => ctx,
             Err(e) => {
@@ -870,7 +869,7 @@ pub async fn process_spot_settle_funds(
         .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == symbol)
         .unwrap();
     let asset_pool_node = asset_pool.pool_nodes.first().unwrap(); // TODO: change this
-    let pool_name = from_utf8(&asset_pool.state.pool_name)
+    let _pool_name = from_utf8(&asset_pool.state.pool_name)
         .unwrap()
         .trim_matches(char::from(0));
     let quote_pool = pools

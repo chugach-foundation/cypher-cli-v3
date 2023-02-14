@@ -13,7 +13,7 @@ use cypher_client::{
         derive_sub_account_address, fixed_to_ui, get_zero_copy_account,
     },
     CancelOrderArgs, Clearing, CypherAccount, DerivativeOrderType, NewDerivativeOrderArgs,
-    OrdersAccount, SelfTradeBehavior, Side,
+    OrdersAccount, Side,
 };
 use cypher_utils::{
     contexts::{AgnosticOrderBookContext, CypherContext, UserContext},
@@ -765,7 +765,7 @@ pub async fn process_perps_market_order(
                 return Err(Box::new(CliError::ClientError(e)));
             }
         };
-    let fee_tiers = clearing.get_fee_tiers();
+    let _fee_tiers = clearing.get_fee_tiers();
 
     let ctx = match CypherContext::load_perpetual_markets(rpc_client).await {
         Ok(ctx) => ctx,
@@ -808,7 +808,7 @@ pub async fn process_perps_market_order(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -1055,7 +1055,7 @@ pub async fn process_perps_close(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,
@@ -1232,7 +1232,7 @@ pub async fn process_perps_limit_order(
     let (quote_pool, _) = derive_pool_address(&encoded_pool_name);
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
-    let orders_account_state = match get_or_create_orders_account(
+    let _orders_account_state = match get_or_create_orders_account(
         &rpc_client,
         keypair,
         &master_account,

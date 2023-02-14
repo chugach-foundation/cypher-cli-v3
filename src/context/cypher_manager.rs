@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use fixed::types::I80F48;
-use log::{info, warn};
+use log::{info};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{
@@ -15,10 +15,9 @@ use crate::common::{
         ExecutionContext, GlobalContext, OperationContext,
     },
     oracle::{OracleInfo, OracleProvider},
-    orders::ManagedOrder,
 };
 
-use super::builders::global::GlobalContextBuilder;
+
 
 pub struct CypherExecutionContextManager {
     global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,

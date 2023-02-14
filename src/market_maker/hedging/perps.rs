@@ -19,7 +19,7 @@ impl PerpsHedger {
 
 impl Hedger for PerpsHedger {
     type Input = ExecutionContext;
-    fn pulse(&self, input: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
+    fn pulse(&self, _input: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
         info!("[{}] Running cypher perps hedger logic..", self.symbol);
 
         Ok(HedgerPulseResult::default())

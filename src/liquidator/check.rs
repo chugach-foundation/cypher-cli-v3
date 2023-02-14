@@ -188,7 +188,7 @@ pub fn check_collateral(
 // todo: there's many things that can be changed here
 // such as using an isolated sub account to perform liquidations
 pub fn check_can_liquidate(
-    cache_ctx: &CacheContext,
+    _cache_ctx: &CacheContext,
     liqor_ctx: &UserContext,
     liqor_clearing: &ClearingInfo,
 ) -> bool {

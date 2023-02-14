@@ -261,16 +261,16 @@ pub fn simulate_spot_liquidation(
 
 /// Simulates a liquidation of positions from [`MarketType::PerpetualFuture`]s.
 pub fn simulate_perp_liquidation(
-    ctx: &SimulationContext,
-    args: &SimulateLiquidationArgs,
+    _ctx: &SimulationContext,
+    _args: &SimulateLiquidationArgs,
 ) -> Result<SimulationResult, Error> {
     Ok(SimulationResult::default())
 }
 
 /// Simulates a liquidation of positions from [`MarketType::IndexFuture`] or [`MarketType::PairFutures`].
 pub fn simulate_futures_liquidation(
-    ctx: &SimulationContext,
-    args: &SimulateLiquidationArgs,
+    _ctx: &SimulationContext,
+    _args: &SimulateLiquidationArgs,
 ) -> Result<SimulationResult, Error> {
     Ok(SimulationResult::default())
 }

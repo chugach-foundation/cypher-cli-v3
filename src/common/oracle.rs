@@ -117,7 +117,7 @@ pub trait OracleProvider: Send + Sync {
                                 Err(_) => () // let's just ignore this for now because we are filtering accounts we don't need through errors
                             };
                         },
-                        Err(e) => {
+                        Err(_e) => {
                             warn!("[{}] There was an error receiving account state update.",  symbol);
                         }
                     }

@@ -1,13 +1,13 @@
-use anchor_spl::token::{spl_token, Mint};
+use anchor_spl::token::{spl_token};
 use clap::{App, Arg, ArgMatches, SubCommand};
-use cypher_client::utils::{get_program_account, get_zero_copy_account};
+use cypher_client::utils::{get_program_account};
 use cypher_utils::contexts::CypherContext;
 use cypher_utils::utils::{get_program_accounts, send_transactions};
 use faucet_client::{
     derive_faucet_address, derive_mint_authority_address, request as request_ix, Faucet,
 };
 use solana_client::{client_error::ClientError, rpc_filter::RpcFilterType};
-use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
+use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use spl_associated_token_account::{
     get_associated_token_address, instruction::create_associated_token_account,
 };

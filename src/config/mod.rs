@@ -6,7 +6,6 @@ use solana_sdk::signature::Keypair;
 use std::{
     fmt::Debug,
     fs::File,
-    io::{BufReader, Read},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -14,7 +13,7 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    common::info::{self, UserInfo},
+    common::info::{UserInfo},
     utils::accounts::{get_or_create_account, get_or_create_sub_account},
 };
 
@@ -46,7 +45,7 @@ pub trait PersistentConfig<T>: DeserializeOwned + Serialize {
     fn load(path: &str) -> Result<Self, ConfigError> {
         let path = match PathBuf::from_str(path) {
             Ok(p) => p,
-            Err(e) => {
+            Err(_e) => {
                 return Err(ConfigError::InvalidPath {
                     path: path.to_string(),
                 })
@@ -92,7 +91,7 @@ pub async fn get_user_info<T>(
             }
         };
 
-    let (sub_acccount_state, sub_account) = match get_or_create_sub_account(
+    let (_sub_acccount_state, sub_account) = match get_or_create_sub_account(
         &rpc_client,
         &keypair,
         &master_account,

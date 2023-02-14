@@ -1,16 +1,16 @@
 use chrono::{DateTime, NaiveDateTime, Utc};
-use clap::{App, Arg, ArgMatches, SubCommand};
+use clap::{App, ArgMatches, SubCommand};
 use cypher_client::{
     utils::{fixed_to_ui, get_zero_copy_account},
     CacheAccount, FuturesMarket, PerpetualMarket, Pool,
 };
-use cypher_utils::utils::{get_cypher_zero_copy_account, get_program_accounts, send_transactions};
-use fixed::types::I80F48;
+use cypher_utils::utils::{get_cypher_zero_copy_account, get_program_accounts};
+
 use solana_client::{
-    client_error::ClientError, nonblocking::rpc_client::RpcClient, rpc_filter::RpcFilterType,
+    rpc_filter::RpcFilterType,
 };
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey, signature::Keypair, signer::Signer};
-use std::{error, str::from_utf8, sync::Arc};
+
+use std::{error, str::from_utf8};
 
 use crate::cli::CliError;
 

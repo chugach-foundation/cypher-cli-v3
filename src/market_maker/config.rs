@@ -7,17 +7,15 @@ use cypher_client::{
 use cypher_utils::{
     accounts_cache::AccountsCache,
     contexts::{CypherContext, MarketContext, PoolContext, SpotMarketContext},
-    services::StreamingAccountInfoService,
-    utils::get_dex_account,
 };
 use fixed::types::I80F48;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-use serde_json;
+
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::{pubkey::Pubkey, signature::Keypair};
-use std::{error, fs::File, io::BufReader, str::from_utf8, sync::Arc};
-use thiserror::Error;
+
+use std::{str::from_utf8, sync::Arc};
+
 use tokio::sync::broadcast::Sender;
 
 use crate::{
@@ -26,20 +24,19 @@ use crate::{
             builder::ContextBuilder, manager::ContextManager, ContextInfo, ExecutionContext,
             GlobalContext, OperationContext,
         },
-        hedger::{Hedger, HedgerPulseResult},
+        hedger::{HedgerPulseResult},
         info::{
             Accounts, FuturesMarketInfo, MarketMetadata, PerpMarketInfo, SpotMarketInfo, UserInfo,
         },
         inventory::InventoryManager,
-        maker::{Maker, MakerPulseResult},
+        maker::{Maker},
         oracle::{OracleInfo, OracleProvider},
-        orders::{ManagedOrder, OrdersInfo},
         strategy::Strategy,
     },
     config::{Config, ConfigError},
     context::{
         builders::{
-            derivatives::DerivativeContextBuilder, global::GlobalContextBuilder,
+            derivatives::DerivativeContextBuilder,
             spot::SpotContextBuilder,
         },
         cypher_manager::CypherExecutionContextManager,
@@ -52,8 +49,7 @@ use crate::{
     },
     oracle::cypher::CypherOracleProvider,
     utils::accounts::{
-        get_or_create_account, get_or_create_orders_account, get_or_create_spot_orders_account,
-        get_or_create_sub_account,
+        get_or_create_orders_account, get_or_create_spot_orders_account,
     },
 };
 
@@ -412,9 +408,9 @@ pub fn get_hedger_from_config(
 
     let hedger: Arc<dyn Strategy<Input = ExecutionContext, Output = HedgerPulseResult>> =
         match &context_info.context_accounts {
-            Accounts::Futures(f) => Arc::new(FuturesHedger::new(context_info.symbol.to_string())),
-            Accounts::Perpetuals(p) => Arc::new(PerpsHedger::new(context_info.symbol.to_string())),
-            Accounts::Spot(s) => Arc::new(SpotHedger::new(context_info.symbol.to_string())),
+            Accounts::Futures(_f) => Arc::new(FuturesHedger::new(context_info.symbol.to_string())),
+            Accounts::Perpetuals(_p) => Arc::new(PerpsHedger::new(context_info.symbol.to_string())),
+            Accounts::Spot(_s) => Arc::new(SpotHedger::new(context_info.symbol.to_string())),
         };
 
     Ok(hedger)
@@ -425,7 +421,7 @@ pub async fn get_context_builder(
     accounts_cache: Arc<AccountsCache>,
     shutdown_sender: Arc<Sender<bool>>,
     context_info: &ContextInfo,
-    user_info: &UserInfo,
+    _user_info: &UserInfo,
 ) -> Result<Arc<dyn ContextBuilder<Output = OperationContext> + Send>, Error> {
     info!("Preparing Context Builder for {}", context_info.symbol);
 
@@ -479,7 +475,7 @@ pub async fn get_context_builder(
 
 /// Gets the appropriate [`ContextManager`] for the given config.
 pub fn get_context_manager_from_config(
-    ctx: &CypherContext,
+    _ctx: &CypherContext,
     config: &Config<MarketMakerConfig>,
     shutdown_sender: Arc<Sender<bool>>,
     global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,
@@ -537,21 +533,21 @@ async fn get_decimals_for_symbol(ctx: &CypherContext, symbol: &str) -> Result<u8
     if symbol.contains("-PERP") {
         match get_perp_market_from_symbol(ctx, symbol).await {
             Ok(ctx) => return Ok(ctx.state.inner.config.decimals),
-            Err(e) => {
+            Err(_e) => {
                 warn!("Could not find perp market for symbol: {}", symbol);
             }
         };
     } else if symbol.contains("1!") {
         match get_futures_market_from_symbol(ctx, symbol).await {
             Ok(ctx) => return Ok(ctx.state.inner.config.decimals),
-            Err(e) => {
+            Err(_e) => {
                 warn!("Could not find futures market for symbol: {}", symbol);
             }
         };
     } else {
         match get_pool_from_symbol(ctx, symbol).await {
             Ok(ctx) => return Ok(ctx.state.config.decimals),
-            Err(e) => {
+            Err(_e) => {
                 warn!("Could not find pool for symbol: {}", symbol);
             }
         };

@@ -3,7 +3,7 @@ use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
 use cypher_client::instructions::{cancel_perp_order, new_perp_order};
 use cypher_client::utils::{convert_coin_to_lots, convert_price_to_lots};
 use cypher_client::{
-    cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs, SelfTradeBehavior,
+    cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs,
 };
 use cypher_utils::contexts::Order;
 use fixed::types::I80F48;
@@ -18,15 +18,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::common::context::{ExecutionContext, GlobalContext, OperationContext};
+use crate::common::context::{ExecutionContext, GlobalContext};
 use crate::common::info::{MarketMetadata, PerpMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
-use crate::common::oracle::OracleInfo;
+
 use crate::common::orders::{
-    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder, OrdersInfo,
+    CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder,
 };
-use crate::common::strategy::{Strategy, StrategyError};
+
 
 pub struct PerpsMaker {
     rpc_client: Arc<RpcClient>,

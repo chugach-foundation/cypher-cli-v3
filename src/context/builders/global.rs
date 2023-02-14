@@ -2,9 +2,9 @@ use async_trait::async_trait;
 use cypher_client::cache_account;
 use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
-    contexts::{CacheContext, ContextError, UserContext},
+    contexts::{CacheContext, UserContext},
 };
-use log::{info, warn};
+use log::{info};
 use solana_sdk::pubkey::Pubkey;
 use std::sync::Arc;
 use tokio::sync::{

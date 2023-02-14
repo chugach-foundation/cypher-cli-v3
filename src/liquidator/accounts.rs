@@ -4,14 +4,14 @@ use cypher_utils::{
     accounts_cache::{AccountState, AccountsCache},
     contexts::{AccountContext, SubAccountContext, UserContext},
     services::StreamingAccountInfoService,
-    utils::{get_program_accounts, get_program_accounts_without_data},
+    utils::{get_program_accounts_without_data},
 };
 use dashmap::DashMap;
 use log::{info, warn};
 use solana_client::{
     client_error::ClientError, nonblocking::rpc_client::RpcClient, rpc_filter::RpcFilterType,
 };
-use solana_sdk::commitment_config::CommitmentConfig;
+
 use std::{
     sync::Arc,
     time::{Duration, SystemTime},

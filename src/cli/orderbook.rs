@@ -2,7 +2,7 @@ use anchor_spl::dex::serum_dex::state::MarketState;
 use cypher_client::{
     constants::QUOTE_TOKEN_DECIMALS,
     utils::{
-        convert_coin_to_decimals_fixed, convert_price_to_decimals_fixed, fixed_to_ui,
+        convert_price_to_decimals_fixed, fixed_to_ui,
         native_to_ui_fixed,
     },
     Market,

@@ -1,13 +1,13 @@
-use chrono::format;
+
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::cache_account;
 use cypher_utils::{
-    accounts_cache::AccountsCache, contexts::CypherContext, logging::init_logger,
+    accounts_cache::AccountsCache, contexts::CypherContext,
     services::StreamingAccountInfoService,
 };
-use fixed::types::I80F48;
+
 use log::{info, warn};
-use solana_sdk::signature::Keypair;
+
 use std::{error, sync::Arc};
 use tokio::sync::broadcast::channel;
 
@@ -19,9 +19,8 @@ use crate::{
             OperationContext,
         },
         oracle::{OracleInfo, OracleProvider},
-        strategy::Strategy,
     },
-    config::{get_user_info, Config, ConfigError, PersistentConfig},
+    config::{get_user_info, Config, PersistentConfig},
     context::builders::global::GlobalContextBuilder,
     market_maker::{
         config::{
@@ -30,7 +29,6 @@ use crate::{
         },
         error::Error,
     },
-    utils::accounts::{get_or_create_account, get_or_create_sub_account},
 };
 
 use super::{command::CliCommand, CliConfig, CliResult};
@@ -303,7 +301,7 @@ pub async fn process_market_maker_command(
             return Err(Box::new(CliError::MarketMaker(e)));
         }
     };
-    let hedger = match get_hedger_from_config(&hedger_context_info) {
+    let _hedger = match get_hedger_from_config(&hedger_context_info) {
         Ok(m) => m,
         Err(e) => {
             warn!("There was an error preparing Hedger: {}", e.to_string());
@@ -317,7 +315,7 @@ pub async fn process_market_maker_command(
 
     // clone and spawn task for the maker oracle provider
     let maker_oracle_provider_clone = maker_oracle_provider.clone();
-    let maker_oracle_provider_handle = tokio::spawn(async move {
+    let _maker_oracle_provider_handle = tokio::spawn(async move {
         match maker_oracle_provider_clone.start().await {
             Ok(_) => (),
             Err(e) => {
@@ -331,7 +329,7 @@ pub async fn process_market_maker_command(
 
     // clone and spawn task for the hedger oracle provider
     let hedger_oracle_provider_clone = hedger_oracle_provider.clone();
-    let hedger_oracle_provider_handle = tokio::spawn(async move {
+    let _hedger_oracle_provider_handle = tokio::spawn(async move {
         match hedger_oracle_provider_clone.start().await {
             Ok(_) => (),
             Err(e) => {
@@ -347,7 +345,7 @@ pub async fn process_market_maker_command(
     let global_context_handler = tokio::spawn(async move {
         match global_context_builder_clone.start().await {
             Ok(_) => (),
-            Err(e) => {
+            Err(_e) => {
                 warn!("There was an error running the Global Context Builder.")
             }
         }

@@ -6,9 +6,9 @@ use cypher_utils::contexts::{
     CacheContext, Fill, GenericEventQueue, GenericOpenOrders, GenericOrderBook, Order, OrderBook,
     UserContext,
 };
-use log::info;
+
 use solana_sdk::pubkey::Pubkey;
-use tokio::time::Instant;
+
 
 /// Represents information about a certain operating context.
 /// This structure makes it easier to build out the remaining components used to operate.
@@ -111,7 +111,7 @@ impl OrdersContext for ExecutionContext {
 }
 
 pub mod manager {
-    use super::{ExecutionContext, GlobalContext, OperationContext};
+    use super::{ExecutionContext};
     use async_trait::async_trait;
     use log::{info, warn};
     use std::sync::Arc;
@@ -267,7 +267,7 @@ pub mod manager {
 }
 
 pub mod builder {
-    use super::{ExecutionContext, GlobalContext, OperationContext};
+    use super::{GlobalContext, OperationContext};
     use async_trait::async_trait;
     use cypher_utils::{accounts_cache::AccountState, contexts::UserContext};
     use log::{info, warn};
@@ -329,7 +329,7 @@ pub mod builder {
                                     Err(_) => () // let's just ignore this for now because we are filtering accounts we don't need through errors
                                 };
                             },
-                            Err(e) => {
+                            Err(_e) => {
                                 warn!("[{}] There was an error receiving account state update.", symbol);
                             }
                         }

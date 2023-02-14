@@ -8,7 +8,6 @@ use cypher_client::{
         deposit_funds, transfer_between_sub_accounts as transfer_between_sub_accounts_ix,
         update_account_margin as update_account_margin_ix, withdraw_funds,
     },
-    quote_mint,
     utils::{
         derive_account_address, derive_pool_node_vault_signer_address,
         derive_public_clearing_address, derive_sub_account_address, derive_token_address,
@@ -435,10 +434,10 @@ pub async fn create_sub_account(
     let keypair = config.keypair.as_ref().unwrap();
 
     // derive clearing address
-    let (public_clearing, _) = derive_public_clearing_address();
+    let (_public_clearing, _) = derive_public_clearing_address();
 
     // derive account address
-    let (account, account_bump, account_number) = if account_number.is_some() {
+    let (account, _account_bump, _account_number) = if account_number.is_some() {
         let (account, bump) = derive_account_address(&keypair.pubkey(), account_number.unwrap());
         (account, bump, account_number.unwrap())
     } else {

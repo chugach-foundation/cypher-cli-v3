@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use super::{context::ExecutionContext, hedger::HedgerError, maker::MakerError};
+use super::{hedger::HedgerError, maker::MakerError};
 
 #[derive(Error, Debug)]
 pub enum StrategyError {

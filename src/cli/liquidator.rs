@@ -1,7 +1,7 @@
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::cache_account;
 use cypher_utils::{
-    accounts_cache::AccountsCache, contexts::CypherContext, logging::init_logger,
+    accounts_cache::AccountsCache, contexts::CypherContext,
     services::StreamingAccountInfoService,
 };
 use log::{info, warn};
@@ -93,7 +93,7 @@ pub async fn process_liquidator_command(
         }
     };
 
-    let cypher_ctx = match CypherContext::load(rpc_client).await {
+    let _cypher_ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
             warn!(
@@ -128,10 +128,10 @@ pub async fn process_liquidator_command(
     info!("🔥 Let's ride! 🔥");
 
     let global_context_builder_clone = global_context_builder.clone();
-    let global_context_handler = tokio::spawn(async move {
+    let _global_context_handler = tokio::spawn(async move {
         match global_context_builder_clone.start().await {
             Ok(_) => (),
-            Err(e) => {
+            Err(_e) => {
                 warn!("There was an error running the Global Context Builder.")
             }
         }

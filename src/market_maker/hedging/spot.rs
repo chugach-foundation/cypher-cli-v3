@@ -19,7 +19,7 @@ impl SpotHedger {
 
 impl Hedger for SpotHedger {
     type Input = ExecutionContext;
-    fn pulse(&self, ctx: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
+    fn pulse(&self, _ctx: &ExecutionContext) -> Result<HedgerPulseResult, HedgerError> {
         info!("[{}] Running spot hedger logic..", self.symbol);
 
         Ok(HedgerPulseResult::default())

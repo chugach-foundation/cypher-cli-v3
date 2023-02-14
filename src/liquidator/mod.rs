@@ -8,17 +8,16 @@ pub mod simulation;
 use anchor_lang::prelude::Pubkey;
 use cypher_client::Clearing;
 use cypher_utils::{
-    accounts_cache::AccountsCache,
-    contexts::{AccountContext, CacheContext, SubAccountContext, UserContext},
+    contexts::{CacheContext, SubAccountContext, UserContext},
     utils::get_cypher_zero_copy_account,
 };
 use dashmap::DashMap;
 use log::{info, warn};
 use solana_client::nonblocking::rpc_client::RpcClient;
-use solana_sdk::signature::Keypair;
+
 use std::{
     sync::Arc,
-    time::{Duration, SystemTime},
+    time::{SystemTime},
 };
 use tokio::sync::{broadcast::Sender, RwLock};
 
@@ -187,7 +186,7 @@ impl Liquidator {
                     return Err(Error::LiquidatorCRatio);
                 }
 
-                let (liqor_can_liq, asset_info, liability_info) = self
+                let (_liqor_can_liq, _asset_info, _liability_info) = self
                     .process_account_liquidation(
                         &cache_ctx,
                         &liqor_ctx,
@@ -215,7 +214,7 @@ impl Liquidator {
                     .find(|sa| sa.address == sub_account)
                     .unwrap();
 
-                let (liqor_can_liq, asset_info, liability_info) = self
+                let (_liqor_can_liq, _asset_info, _liability_info) = self
                     .process_sub_account_liquidation(
                         &cache_ctx,
                         &liqor_ctx,
@@ -262,11 +261,11 @@ impl Liquidator {
 
     pub async fn process_sub_account_liquidation(
         &self,
-        cache_ctx: &CacheContext,
-        liqor_ctx: &UserContext,
-        liqor_clearing: &ClearingInfo,
-        liqee_sub_account_ctx: &SubAccountContext,
-        liqee_clearing: &ClearingInfo,
+        _cache_ctx: &CacheContext,
+        _liqor_ctx: &UserContext,
+        _liqor_clearing: &ClearingInfo,
+        _liqee_sub_account_ctx: &SubAccountContext,
+        _liqee_clearing: &ClearingInfo,
     ) -> Result<(bool, usize, usize), Error> {
         // check which asset the liquidator is able to liquidate
 
