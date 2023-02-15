@@ -51,7 +51,7 @@ impl CypherAccountsService {
         }
     }
 
-    pub async fn start(self: &Arc<Self>) {
+    pub async fn start(self: &Arc<Self>) -> Result<(), Error> {
         let aself = Arc::clone(self);
 
         let aself_clone = aself.clone();
@@ -74,7 +74,7 @@ impl CypherAccountsService {
                         }
                     };
                     let delta = start.elapsed().unwrap();
-                    info!("Time elapsed: {:?}", delta);
+                    info!("Time elapsed fetching all accounts: {:?}", delta);
 
                 },
                 _ = shutdown_receiver.recv() => {
@@ -84,7 +84,7 @@ impl CypherAccountsService {
             }
         }
 
-        tokio::join!(updates_handler);
+        Ok(updates_handler.await.unwrap())
     }
 
     pub async fn process_updates(self: &Arc<Self>) {

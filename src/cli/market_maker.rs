@@ -442,8 +442,7 @@ pub async fn process_market_maker_command(
         accounts_cache.clone(),
         pubsub_client.clone(),
         rpc_client.clone(),
-        shutdown_sender.subscribe(),
-        &vec![],
+        shutdown_sender.clone(),
     ));
     let streaming_account_service_clone = streaming_account_service.clone();
     let streaming_account_service_handle = tokio::spawn(async move {

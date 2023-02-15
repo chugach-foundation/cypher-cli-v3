@@ -44,7 +44,7 @@ pub struct PositionInfo {
     pub sub_account: Pubkey,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct LiquidationCheck {
     pub liquidation_type: LiquidationType,
     pub positions_info: Vec<PositionInfo>,
@@ -55,26 +55,25 @@ pub fn check_collateral(
     liqee_ctx: &UserContext,
     liqee_clearing: &ClearingInfo,
 ) -> LiquidationCheck {
-    let account_ctx = &liqee_ctx.account_ctx;
-
     info!(
         "Checking if account {} is eligible for liquidation..",
-        account_ctx.address
+        liqee_ctx.account_ctx.address
     );
 
     // let's check if the account is eligible for liquidation
     let margin_maint_ratio = liqee_clearing.state.maint_margin_ratio();
-    let margin_c_ratio = account_ctx.state.get_margin_c_ratio();
+    let margin_c_ratio =
+        liqee_ctx.get_margin_c_ratio(cache_ctx, MarginCollateralRatioType::Maintenance);
 
     info!(
-        "Margin Maint Ratio: {} - Margin C Ratio: {}",
+        "Maintenance Margin Ratio: {} - Margin C Ratio: {}",
         margin_maint_ratio, margin_c_ratio
     );
 
     if margin_c_ratio < margin_maint_ratio {
         info!(
             "Liqee: {} - Account: {} - Margin C Ratio below Maintenance. C Ratio: {}",
-            account_ctx.state.authority, account_ctx.address, margin_c_ratio
+            liqee_ctx.account_ctx.state.authority, liqee_ctx.account_ctx.address, margin_c_ratio
         );
 
         let mut positions_info = Vec::new();
@@ -91,7 +90,7 @@ pub fn check_collateral(
                             positions_info.push(PositionInfo {
                                 position_type: PositionType::Spot,
                                 identifier: position.spot.token_mint,
-                                account: account_ctx.address,
+                                account: liqee_ctx.account_ctx.address,
                                 sub_account: sub_account_ctx.address,
                             });
                         }
@@ -104,7 +103,7 @@ pub fn check_collateral(
                             positions_info.push(PositionInfo {
                                 position_type: PositionType::Derivative,
                                 identifier: position.derivative.market,
-                                account: account_ctx.address,
+                                account: liqee_ctx.account_ctx.address,
                                 sub_account: sub_account_ctx.address,
                             });
                         }
@@ -115,7 +114,7 @@ pub fn check_collateral(
 
         return LiquidationCheck {
             liquidation_type: LiquidationType::Account {
-                account: account_ctx.address,
+                account: liqee_ctx.account_ctx.address,
             },
             positions_info,
         };
@@ -135,7 +134,7 @@ pub fn check_collateral(
             if margin_c_ratio < margin_maint_ratio {
                 info!(
                     "Liqee: {} - Sub Account: {} - Margin C Ratio below Maintenance. C Ratio: {}",
-                    account_ctx.state.authority, sub_account_ctx.address, margin_c_ratio
+                    liqee_ctx.account_ctx.state.authority, sub_account_ctx.address, margin_c_ratio
                 );
                 let mut positions_info = Vec::new();
 
@@ -148,7 +147,7 @@ pub fn check_collateral(
                             positions_info.push(PositionInfo {
                                 position_type: PositionType::Spot,
                                 identifier: position.spot.token_mint,
-                                account: account_ctx.address,
+                                account: liqee_ctx.account_ctx.address,
                                 sub_account: sub_account_ctx.address,
                             });
                         }
@@ -161,7 +160,7 @@ pub fn check_collateral(
                             positions_info.push(PositionInfo {
                                 position_type: PositionType::Derivative,
                                 identifier: position.derivative.market,
-                                account: account_ctx.address,
+                                account: liqee_ctx.account_ctx.address,
                                 sub_account: sub_account_ctx.address,
                             });
                         }
@@ -188,7 +187,7 @@ pub fn check_collateral(
 // todo: there's many things that can be changed here
 // such as using an isolated sub account to perform liquidations
 pub fn check_can_liquidate(
-    _cache_ctx: &CacheContext,
+    cache_ctx: &CacheContext,
     liqor_ctx: &UserContext,
     liqor_clearing: &ClearingInfo,
 ) -> bool {
@@ -201,9 +200,15 @@ pub fn check_can_liquidate(
 
     // let's check if the liquidator can still perform liquidations
     let init_margin_ratio = liqor_clearing.state.init_margin_ratio();
-    let margin_c_ratio = account_ctx.state.get_margin_c_ratio();
+    let margin_c_ratio =
+        liqor_ctx.get_margin_c_ratio(cache_ctx, MarginCollateralRatioType::Initialization);
 
-    if margin_c_ratio >= init_margin_ratio {
+    info!(
+        "Initialization Margin Ratio: {} - Margin C Ratio: {}",
+        init_margin_ratio, margin_c_ratio
+    );
+
+    if margin_c_ratio > init_margin_ratio {
         return true;
     }
 

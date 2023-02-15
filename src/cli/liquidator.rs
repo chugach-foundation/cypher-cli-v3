@@ -92,7 +92,7 @@ pub async fn process_liquidator_command(
         }
     };
 
-    let _cypher_ctx = match CypherContext::load(rpc_client).await {
+    let cypher_ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
             warn!(
@@ -127,7 +127,7 @@ pub async fn process_liquidator_command(
     info!("🔥 Let's ride! 🔥");
 
     let global_context_builder_clone = global_context_builder.clone();
-    let _global_context_handler = tokio::spawn(async move {
+    let global_context_handle = tokio::spawn(async move {
         match global_context_builder_clone.start().await {
             Ok(_) => (),
             Err(_e) => {
@@ -141,18 +141,12 @@ pub async fn process_liquidator_command(
         accounts_cache.clone(),
         pubsub_client.clone(),
         rpc_client.clone(),
-        shutdown_sender.subscribe(),
-        &vec![],
+        shutdown_sender.clone(),
     ));
     let streaming_account_service_clone = streaming_account_service.clone();
     let streaming_account_service_handle = tokio::spawn(async move {
         streaming_account_service_clone.start_service().await;
     });
-
-    // fetch all cypher accounts
-    // - create cache of pubkeys, periodically update it
-    // fetch all cypher sub accounts
-    // - create cache of pubkeys, periodically update it
 
     // start a service which fetches all cypher accounts and sub accounts asynchronously
     // and then sends a message for the service above to subscribe to their account datas
@@ -173,6 +167,7 @@ pub async fn process_liquidator_command(
         global_context_builder.clone(),
         cypher_accounts_service.update_sender.clone(),
         shutdown_sender.clone(),
+        cypher_ctx,
         user_info.clone(),
     ));
     let liquidator_clone = liquidator.clone();
@@ -199,9 +194,10 @@ pub async fn process_liquidator_command(
     }
 
     tokio::join!(
-        liquidator_handle,
+        global_context_handle,
         streaming_account_service_handle,
-        cypher_accounts_service_handle
+        cypher_accounts_service_handle,
+        liquidator_handle,
     );
 
     Ok(CliResult {})
