@@ -95,10 +95,7 @@ pub async fn process_liquidator_command(
     let cypher_ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
-            warn!(
-                "There was an error loading the cypher context: {}",
-                e.to_string()
-            );
+            warn!("There was an error loading the cypher context: {:?}", e);
             return Err(Box::new(CliError::ContextError(e)));
         }
     };
@@ -107,7 +104,7 @@ pub async fn process_liquidator_command(
         match get_user_info::<LiquidatorConfig>(rpc_client.clone(), &mm_config, keypair).await {
             Ok(ui) => ui,
             Err(e) => {
-                warn!("There was an error getting user info: {}", e.to_string());
+                warn!("There was an error getting user info: {:?}", e);
                 return Err(Box::new(CliError::Liquidator(Error::ClientError(e))));
             }
         };
@@ -129,9 +126,14 @@ pub async fn process_liquidator_command(
     let global_context_builder_clone = global_context_builder.clone();
     let global_context_handle = tokio::spawn(async move {
         match global_context_builder_clone.start().await {
-            Ok(_) => (),
-            Err(_e) => {
-                warn!("There was an error running the Global Context Builder.")
+            Ok(_) => {
+                info!("Global Context Builder successfully stopped.");
+            }
+            Err(e) => {
+                warn!(
+                    "There was an error running the Global Context Builder. Error: {:?}",
+                    e
+                );
             }
         }
     });
@@ -158,7 +160,17 @@ pub async fn process_liquidator_command(
     ));
     let cypher_accounts_service_clone = cypher_accounts_service.clone();
     let cypher_accounts_service_handle = tokio::spawn(async move {
-        cypher_accounts_service_clone.start().await;
+        match cypher_accounts_service_clone.start().await {
+            Ok(()) => {
+                info!("Cypher Accounts Service successfully stopped.");
+            }
+            Err(e) => {
+                warn!(
+                    "There was an error running the Global Context Builder. Error: {:?}",
+                    e
+                );
+            }
+        }
     });
 
     // fetch all clearings
@@ -187,18 +199,43 @@ pub async fn process_liquidator_command(
                     info!("Sucessfully sent shutdown signal. Waiting for tasks to complete...")
                 },
                 Err(e) => {
-                    warn!("Failed to send shutdown error: {}", e.to_string());
+                    warn!("Failed to send shutdown error: {:?}", e);
                 }
             };
         },
     }
 
-    tokio::join!(
-        global_context_handle,
-        streaming_account_service_handle,
-        cypher_accounts_service_handle,
-        liquidator_handle,
-    );
+    match global_context_handle.await {
+        Ok(_) => info!("Sucessfully waited for Global Context Builder handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Global Context Builder handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match streaming_account_service_handle.await {
+        Ok(_) => info!("Sucessfully waited for Streaming Account Service handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Streaming Account Service handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match cypher_accounts_service_handle.await {
+        Ok(_) => info!("Sucessfully waited for Cypher Accounts Service handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Cypher Accounts Service handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match liquidator_handle.await {
+        Ok(_) => info!("Sucessfully waited for Liquidator handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Liquidator handle. Error: {:?}",
+            e
+        ),
+    };
 
     Ok(CliResult {})
 }

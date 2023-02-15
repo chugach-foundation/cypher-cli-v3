@@ -21,11 +21,11 @@ anchor-spl = { version = "0.26.0", features = [ "token", "associated_token", "de
 async-trait = "0.1.58"
 chrono = "0.4.19"
 clap = "2.33.1"
-cypher-client = { path = "../cypher-client-v3/cypher-client/" }
-cypher-utils = { path = "../cypher-client-v3/cypher-utils/" }
+cypher-client = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }
+cypher-utils = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }
 dashmap = "5.3.4"
 env_logger = "0.9.3"
-faucet-client = { path = "../cypher-client-v3/faucet-client/" }
+faucet-client = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }
 fixed = { version = ">=1.11.0, <1.12.0", features = ["serde"] }
 futures = "0.3.21"
 futures-core = "0.3.21"

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use cypher_client::{
     utils::{
         derive_orders_account_address, derive_spot_open_orders_address, gen_dex_vault_signer_key,
@@ -11,11 +12,8 @@ use cypher_utils::{
 use fixed::types::I80F48;
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
-
 use solana_client::nonblocking::rpc_client::RpcClient;
-
 use std::{str::from_utf8, sync::Arc};
-
 use tokio::sync::broadcast::Sender;
 
 use crate::{
@@ -527,30 +525,20 @@ pub async fn get_oracle_provider(
 async fn get_decimals_for_symbol(ctx: &CypherContext, symbol: &str) -> Result<u8, Error> {
     if symbol.contains("-PERP") {
         match get_perp_market_from_symbol(ctx, symbol).await {
-            Ok(ctx) => return Ok(ctx.state.inner.config.decimals),
-            Err(_e) => {
-                warn!("Could not find perp market for symbol: {}", symbol);
-            }
-        };
+            Ok(ctx) => Ok(ctx.state.inner.config.decimals),
+            Err(e) => Err(e),
+        }
     } else if symbol.contains("1!") {
         match get_futures_market_from_symbol(ctx, symbol).await {
-            Ok(ctx) => return Ok(ctx.state.inner.config.decimals),
-            Err(_e) => {
-                warn!("Could not find futures market for symbol: {}", symbol);
-            }
-        };
+            Ok(ctx) => Ok(ctx.state.inner.config.decimals),
+            Err(e) => Err(e),
+        }
     } else {
         match get_pool_from_symbol(ctx, symbol).await {
-            Ok(ctx) => return Ok(ctx.state.config.decimals),
-            Err(_e) => {
-                warn!("Could not find pool for symbol: {}", symbol);
-            }
-        };
+            Ok(ctx) => Ok(ctx.state.config.decimals),
+            Err(e) => Err(e),
+        }
     }
-
-    Err(Error::InvalidConfig(ConfigError::UnrecognizedSymbol(
-        symbol.to_string(),
-    )))
 }
 
 /// Gets the [`PoolContext`] for the given symbol.

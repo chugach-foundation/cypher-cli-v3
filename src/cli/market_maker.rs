@@ -98,7 +98,7 @@ pub async fn process_market_maker_command(
     let config: Config<MarketMakerConfig> = match PersistentConfig::load(config_path) {
         Ok(c) => c,
         Err(e) => {
-            warn!("There was an error loading config: {}", e.to_string());
+            warn!("There was an error loading config: {:?}", e);
             return Err(Box::new(CliError::BadParameters(
                 "Failed to load market maker config.".to_string(),
             )));
@@ -108,10 +108,7 @@ pub async fn process_market_maker_command(
     let cypher_ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
-            warn!(
-                "There was an error loading the cypher context: {}",
-                e.to_string()
-            );
+            warn!("There was an error loading the cypher context: {:?}", e);
             return Err(Box::new(CliError::ContextError(e)));
         }
     };
@@ -120,7 +117,7 @@ pub async fn process_market_maker_command(
         match get_user_info::<MarketMakerConfig>(rpc_client.clone(), &config, keypair).await {
             Ok(ui) => ui,
             Err(e) => {
-                warn!("There was an error getting user info: {}", e.to_string());
+                warn!("There was an error getting user info: {:?}", e);
                 return Err(Box::new(CliError::MarketMaker(Error::ClientError(e))));
             }
         };
@@ -130,10 +127,7 @@ pub async fn process_market_maker_command(
         match get_context_info(rpc_client.clone(), &cypher_ctx, &user_info, maker_symbol).await {
             Ok(mci) => mci,
             Err(e) => {
-                warn!(
-                    "There was an error getting maker context info: {}",
-                    e.to_string()
-                );
+                warn!("There was an error getting maker context info: {:?}", e);
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
         };
@@ -143,10 +137,7 @@ pub async fn process_market_maker_command(
         match get_context_info(rpc_client.clone(), &cypher_ctx, &user_info, hedger_symbol).await {
             Ok(hci) => hci,
             Err(e) => {
-                warn!(
-                    "There was an error getting hedger context info: {}",
-                    e.to_string()
-                );
+                warn!("There was an error getting hedger context info: {:?}", e);
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
         };
@@ -173,8 +164,8 @@ pub async fn process_market_maker_command(
             Ok(m) => m,
             Err(e) => {
                 warn!(
-                    "There was an error preparing Maker Context Builder: {}",
-                    e.to_string()
+                    "There was an error preparing Maker Context Builder: {:?}",
+                    e
                 );
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
@@ -191,8 +182,8 @@ pub async fn process_market_maker_command(
             Ok(m) => m,
             Err(e) => {
                 warn!(
-                    "There was an error preparing Hedger Context Builder: {}",
-                    e.to_string()
+                    "There was an error preparing Hedger Context Builder: {:?}",
+                    e
                 );
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
@@ -209,8 +200,8 @@ pub async fn process_market_maker_command(
             Ok(o) => o,
             Err(e) => {
                 warn!(
-                    "There was an error preparing Maker Oracle Provider: {}",
-                    e.to_string()
+                    "There was an error preparing Maker Oracle Provider: {:?}",
+                    e
                 );
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
@@ -227,8 +218,8 @@ pub async fn process_market_maker_command(
             Ok(o) => o,
             Err(e) => {
                 warn!(
-                    "There was an error preparing Hedger Oracle Provider: {}",
-                    e.to_string()
+                    "There was an error preparing Hedger Oracle Provider: {:?}",
+                    e
                 );
                 return Err(Box::new(CliError::MarketMaker(e)));
             }
@@ -252,8 +243,8 @@ pub async fn process_market_maker_command(
         Ok(m) => m,
         Err(e) => {
             warn!(
-                "There was an error preparing Maker Context Manager: {}",
-                e.to_string()
+                "There was an error preparing Maker Context Manager: {:?}",
+                e
             );
             return Err(Box::new(CliError::MarketMaker(e)));
         }
@@ -276,8 +267,8 @@ pub async fn process_market_maker_command(
         Ok(m) => m,
         Err(e) => {
             warn!(
-                "There was an error preparing Hedger Context Manager: {}",
-                e.to_string()
+                "There was an error preparing Hedger Context Manager: {:?}",
+                e
             );
             return Err(Box::new(CliError::MarketMaker(e)));
         }
@@ -295,14 +286,14 @@ pub async fn process_market_maker_command(
     {
         Ok(m) => m,
         Err(e) => {
-            warn!("There was an error preparing Maker: {}", e.to_string());
+            warn!("There was an error preparing Maker: {:?}", e);
             return Err(Box::new(CliError::MarketMaker(e)));
         }
     };
     let _hedger = match get_hedger_from_config(&hedger_context_info) {
         Ok(m) => m,
         Err(e) => {
-            warn!("There was an error preparing Hedger: {}", e.to_string());
+            warn!("There was an error preparing Hedger: {:?}", e);
             return Err(Box::new(CliError::MarketMaker(e)));
         }
     };
@@ -317,10 +308,7 @@ pub async fn process_market_maker_command(
         match maker_oracle_provider_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Maker Oracle Provider: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Maker Oracle Provider: {:?}", e);
             }
         }
     });
@@ -340,7 +328,7 @@ pub async fn process_market_maker_command(
     });
 
     let global_context_builder_clone = global_context_builder.clone();
-    let global_context_handler = tokio::spawn(async move {
+    let global_context_handle = tokio::spawn(async move {
         match global_context_builder_clone.start().await {
             Ok(_) => (),
             Err(_e) => {
@@ -351,28 +339,22 @@ pub async fn process_market_maker_command(
 
     // clone and spawn task for the maker context builder
     let maker_ctx_builder_handler_clone = maker_context_builder.clone();
-    let maker_ctx_builder_handler = tokio::spawn(async move {
+    let maker_ctx_builder_handle = tokio::spawn(async move {
         match maker_ctx_builder_handler_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Maker Context Builder: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Maker Context Builder: {:?}", e);
             }
         }
     });
 
     // clone and spawn task for the hedger context builder
     let hedger_ctx_builder_handler_clone = hedger_context_builder.clone();
-    let hedger_ctx_builder_handler = tokio::spawn(async move {
+    let hedger_ctx_builder_handle = tokio::spawn(async move {
         match hedger_ctx_builder_handler_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Heger Context Builder: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Heger Context Builder: {:?}", e);
             }
         }
     });
@@ -383,10 +365,7 @@ pub async fn process_market_maker_command(
         match maker_context_manager_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Maker Context Manager: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Maker Context Manager: {:?}", e);
             }
         }
     });
@@ -397,10 +376,7 @@ pub async fn process_market_maker_command(
         match hedger_context_manager_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!(
-                    "There was an error running Hedger Context Manager: {:?}",
-                    e.to_string()
-                );
+                warn!("There was an error running Hedger Context Manager: {:?}", e);
             }
         }
     });
@@ -410,32 +386,10 @@ pub async fn process_market_maker_command(
         match maker_clone.start().await {
             Ok(_) => (),
             Err(e) => {
-                warn!("There was an error running Maker: {:?}", e.to_string());
+                warn!("There was an error running Maker: {:?}", e);
             }
         }
     });
-
-    // let hedger_runner_opts = RunnerOptions {
-    //     name: hedger_context_info.symbol.to_string(),
-    //     shutdown: shutdown_sender.clone(),
-    //     execution_condition: ExecutionCondition::EventBased,
-    //     strategy: hedger.clone(),
-    //     context_manager: hedger_context_manager.clone(),
-    // };
-
-    // let hedger_runner = Arc::new(Runner::new(hedger_runner_opts));
-    // let hedger_runner_clone = hedger_runner.clone();
-    // let hedger_runner_handle = tokio::spawn(async move {
-    //     match hedger_runner_clone.run().await {
-    //         Ok(()) => (),
-    //         Err(e) => {
-    //             warn!(
-    //                 "There was an error running Hedging Strategy Runner: {:?}",
-    //                 e.to_string()
-    //             );
-    //         }
-    //     }
-    // });
 
     // only add the necessary subscriptions to the service so the initial account fetching propagates to all listeners
     let streaming_account_service = Arc::new(StreamingAccountInfoService::new(
@@ -469,21 +423,67 @@ pub async fn process_market_maker_command(
                     info!("Sucessfully sent shutdown signal. Waiting for tasks to complete...")
                 },
                 Err(e) => {
-                    warn!("Failed to send shutdown error: {}", e.to_string());
+                    warn!("Failed to send shutdown error: {:?}", e);
                 }
             };
         },
     }
 
-    tokio::join!(
-        global_context_handler,
-        maker_ctx_builder_handler,
-        hedger_ctx_builder_handler,
-        maker_context_manager_handle,
-        hedger_context_manager_handle,
-        maker_handle,
-        streaming_account_service_handle
-    );
+    match streaming_account_service_handle.await {
+        Ok(_) => info!("Sucessfully waited for Streaming Account Service handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Streaming Account Service handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match global_context_handle.await {
+        Ok(_) => info!("Sucessfully waited for Global Context Builder handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Global Context Builder handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match maker_ctx_builder_handle.await {
+        Ok(_) => info!("Sucessfully waited for Maker Context Builder handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Maker Context Builder handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match hedger_ctx_builder_handle.await {
+        Ok(_) => info!("Sucessfully waited for Hedger Context Builder handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Hedger Context Builder handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match maker_context_manager_handle.await {
+        Ok(_) => info!("Sucessfully waited for Maker Context Manager handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Maker Context Manager handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match hedger_context_manager_handle.await {
+        Ok(_) => info!("Sucessfully waited for Hedger Context Manager handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Hedger Context Manager handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match maker_handle.await {
+        Ok(_) => info!("Sucessfully waited for Maker handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Maker handle. Error: {:?}",
+            e
+        ),
+    };
 
     Ok(CliResult {})
 }

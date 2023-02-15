@@ -2,7 +2,6 @@ pub mod accounts;
 pub mod check;
 pub mod config;
 pub mod error;
-pub mod info;
 pub mod simulation;
 
 use anchor_lang::prelude::Pubkey;

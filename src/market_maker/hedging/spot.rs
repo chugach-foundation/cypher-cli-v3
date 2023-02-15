@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use log::info;
+use log::{info, warn};
 
 use crate::common::{
     context::ExecutionContext,
@@ -36,7 +36,14 @@ where
 
     async fn execute(&self, ctx: &ExecutionContext) -> Result<HedgerPulseResult, StrategyError> {
         info!("[{}] Running strategy..", self.symbol);
-        self.pulse(ctx);
+        match self.pulse(ctx) {
+            Ok(res) => {
+                info!("Pulse result: {:?}", res);
+            }
+            Err(e) => {
+                warn!("There was an error running hedger pulse. Error: {:?}", e);
+            }
+        };
         Ok(HedgerPulseResult { size_executed: 0 })
     }
 }

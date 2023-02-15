@@ -38,8 +38,6 @@ pub struct MakerPulseResult {
 pub enum MakerError {
     #[error(transparent)]
     ClientError(#[from] ClientError),
-    #[error("Insufficient data.")]
-    InsufficientData,
 }
 
 /// Defines shared functionality that different makers should implement
@@ -478,7 +476,7 @@ pub trait Maker: Send + Sync {
             });
         }
 
-        /// if we have no orders we need to submit new ones
+        // if we have no orders we need to submit new ones
         if orders.open_orders.is_empty() {
             match self.place_new_orders(quote_volumes, spread_info).await {
                 Ok(num_new_orders) => {
@@ -493,8 +491,8 @@ pub trait Maker: Send + Sync {
             }
         }
 
-        /// otherwise we have a few things to do
-        /// 1. first we will see if there are expired orders
+        // otherwise we have a few things to do
+        // 1. first we will see if there are expired orders
         let num_expired_canceled = match self.cancel_expired_orders(&orders.open_orders).await {
             Ok(num_canceled) => num_canceled,
             Err(e) => {
@@ -502,10 +500,10 @@ pub trait Maker: Send + Sync {
             }
         };
 
-        /// 2. secondly, we get what would be our newest desired orders
+        // 2. secondly, we get what would be our newest desired orders
         let candidate_placements = self.get_new_orders(quote_volumes, spread_info);
 
-        /// then we see if any of the existing orders are stale
+        // then we see if any of the existing orders are stale
         let stale_orders = self.get_stale_orders(&orders.open_orders, &candidate_placements);
         let num_cancelled_stale_orders = if !stale_orders.is_empty() {
             info!(
@@ -553,7 +551,7 @@ pub trait Maker: Send + Sync {
             0
         };
 
-        /// only after checking for stale orders do we see which we want to submit
+        // only after checking for stale orders do we see which we want to submit
         Ok(MakerPulseResult {
             num_cancelled_orders: num_expired_canceled + num_cancelled_stale_orders,
             num_new_orders,

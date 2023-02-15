@@ -71,15 +71,6 @@ pub struct GlobalContext {
     pub user: UserContext,
 }
 
-impl GlobalContext {
-    pub async fn build() -> Self {
-        Self {
-            cache: CacheContext::default(),
-            user: UserContext::default(),
-        }
-    }
-}
-
 /// The execution context.
 #[derive(Debug, Default, Clone)]
 pub struct ExecutionContext {
@@ -268,7 +259,7 @@ pub mod manager {
 pub mod builder {
     use super::{GlobalContext, OperationContext};
     use async_trait::async_trait;
-    use cypher_utils::{accounts_cache::AccountState, contexts::UserContext};
+    use cypher_utils::accounts_cache::AccountState;
     use log::{info, warn};
     use solana_sdk::pubkey::Pubkey;
     use std::sync::Arc;
@@ -281,10 +272,6 @@ pub mod builder {
         OperationContextSendError(SendError<OperationContext>),
         #[error("Global context send error: {:?}", self)]
         GlobalContextSendError(SendError<GlobalContext>),
-        #[error("Users context send error: {:?}", self)]
-        UsersContextSendError(SendError<UserContext>),
-        #[error("Process update error: {0}")]
-        ProcessUpdateError(String),
         #[error("Unrecognized account error: {0}")]
         UnrecognizedAccount(Pubkey),
     }

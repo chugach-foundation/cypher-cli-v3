@@ -20,7 +20,7 @@ use cypher_utils::{
     utils::{get_cypher_zero_copy_account, get_program_accounts, send_transactions},
 };
 use fixed::types::I80F48;
-use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, MemcmpEncoding, RpcFilterType};
+use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType};
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
@@ -345,6 +345,7 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
     }
 }
 
+#[allow(deprecated)]
 pub async fn list_spot_open_orders(
     config: &CliConfig,
     pubkey: Option<Pubkey>,
@@ -372,7 +373,7 @@ pub async fn list_spot_open_orders(
         RpcFilterType::Memcmp(Memcmp {
             offset: 12 + 8, // offset for authority pubkey on cypher's orders accounts, includes anchor discriminator
             bytes: MemcmpEncodedBytes::Base58(authority.to_string()),
-            encoding: Some(MemcmpEncoding::Binary),
+            encoding: None,
         }),
     ];
     let orders_accounts = match get_program_accounts(rpc_client, filters, &dex::id()).await {

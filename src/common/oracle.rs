@@ -12,18 +12,6 @@ pub enum OracleProviderError {
     OutputSendError(SendError<OracleInfo>),
 }
 
-/// Represents centralized exchange based oracle sources.
-#[derive(Debug, Clone)]
-pub enum CentralizedExchangeSource {
-    Binance,
-}
-
-impl Default for CentralizedExchangeSource {
-    fn default() -> Self {
-        Self::Binance
-    }
-}
-
 /// Represents decentralized exchange based oracle sources.
 #[derive(Debug, Clone)]
 pub enum DecentralizedExchangeSource {
@@ -51,8 +39,6 @@ impl Default for OnchainOracleSource {
 /// Represents the source type of the [`OracleInfo`] source.
 #[derive(Debug, Clone)]
 pub enum OracleInfoSource {
-    /// Centralized exchange.
-    Cex(CentralizedExchangeSource),
     /// Decentralized exchange.
     Dex(DecentralizedExchangeSource),
     /// On-chain.

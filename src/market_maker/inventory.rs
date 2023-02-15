@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use {fixed::types::I80F48, log::info, solana_sdk::pubkey::Pubkey};
 
 use crate::common::{
@@ -17,19 +18,6 @@ pub struct ShapeFunctionInventoryManager {
 }
 
 impl ShapeFunctionInventoryManager {
-    pub fn default() -> Self {
-        Self {
-            decimals: u8::default(),
-            exp_base: u32::default(),
-            max_quote: I80F48::ZERO,
-            shape_num: I80F48::default(),
-            shape_denom: I80F48::default(),
-            spread: I80F48::ONE,
-            market_identifier: Pubkey::default(),
-            is_derivative: false,
-        }
-    }
-
     pub fn new(
         market_identifier: Pubkey,
         is_derivative: bool,

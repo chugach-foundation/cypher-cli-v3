@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use async_trait::async_trait;
 use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
 use cypher_client::instructions::{cancel_spot_order, new_spot_order};
