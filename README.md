@@ -6,15 +6,16 @@
   <p>
     <strong>cypher v3 command line utilities</strong>
   </p>
-  </br>
   <p>
-    <a href="https://discord.gg/jr9Mu4Uz25"><img alt="Discord Chat" src="https://img.shields.io/discord/880917405356945449?color=blue&style=flat-square" /></a>
+    <a href="https://discord.gg/jr9Mu4Uz25">
+      <img alt="Discord Chat" src="https://img.shields.io/discord/880917405356945449?color=blue&style=flat-square" />
+    </a>
   </p>
   <h4>
     <a href="https://cypher.trade/">cypher.trade</a>
     <span> | </span>
     <a href="https://github.com/chugach-foundation/cypher-client-v3">Rust Clients</a>
-    <span> | </span>>
+    <span> | </span>
     <a href="https://github.com/chugach-foundation/cypher-client-ts-v3">TypeScript Client</a>
   </h4>
   </br>

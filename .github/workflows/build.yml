@@ -1,4 +1,4 @@
-name: Cargo-audit, lint and test grid program
+name: Cargo-audit, lint and test
 
 on:
   push:
