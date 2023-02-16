@@ -113,19 +113,25 @@ impl AccountSubCommands for App<'_, '_> {
 pub fn parse_account_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("close", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Close {
                 account_number,
             }))
         }
         ("create", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Create {
                 account_number,
             }))
         }
         ("create-whitelisted", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
             let whitelist = Pubkey::from_str(matches.value_of("whitelist").unwrap()).unwrap();
             let private_clearing =
                 Pubkey::from_str(matches.value_of("private-clearing").unwrap()).unwrap();
@@ -136,8 +142,12 @@ pub fn parse_account_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
             }))
         }
         ("peek", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let pubkey = matches
+                .value_of("pubkey")
+                .map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Peek {
                 account_number,
                 pubkey,

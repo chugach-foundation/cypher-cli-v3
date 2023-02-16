@@ -256,16 +256,24 @@ pub fn parse_sub_account_command(
 ) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("close", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches
+                .value_of("sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Close {
                 account_number,
                 sub_account_number,
             }))
         }
         ("create", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches
+                .value_of("sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
             let sub_account_alias = matches.value_of("sub-account-alias").map(|a| a.to_string());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Create {
                 account_number,
@@ -274,8 +282,12 @@ pub fn parse_sub_account_command(
             }))
         }
         ("deposit", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches
+                .value_of("sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {
@@ -302,8 +314,12 @@ pub fn parse_sub_account_command(
             }))
         }
         ("withdraw", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches
+                .value_of("sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {
@@ -330,9 +346,15 @@ pub fn parse_sub_account_command(
             }))
         }
         ("peek", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
-            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches
+                .value_of("sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let pubkey = matches
+                .value_of("pubkey")
+                .map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Peek {
                 account_number,
                 sub_account_number,
@@ -340,9 +362,15 @@ pub fn parse_sub_account_command(
             }))
         }
         ("transfer", Some(matches)) => {
-            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
-            let from_sub_account_number = matches.value_of("from-sub-account-number").map(|a| u8::from_str(a).unwrap());
-            let to_sub_account_number = matches.value_of("to-sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let account_number = matches
+                .value_of("account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let from_sub_account_number = matches
+                .value_of("from-sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
+            let to_sub_account_number = matches
+                .value_of("to-sub-account-number")
+                .map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {

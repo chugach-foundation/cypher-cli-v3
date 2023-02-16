@@ -111,11 +111,12 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             Ok(r) => Ok(r),
             Err(e) => Err(e),
         },
-        CliCommand::FaucetRequest { token_mint } => match request_faucet(config, token_mint).await
-        {
-            Ok(r) => Ok(r),
-            Err(e) => Err(Box::new(CliError::ClientError(e))),
-        },
+        CliCommand::FaucetRequest { token_mint } => {
+            match request_faucet(config, token_mint).await {
+                Ok(r) => Ok(r),
+                Err(e) => Err(Box::new(CliError::ClientError(e))),
+            }
+        }
         CliCommand::Liquidator { config_path } => {
             process_liquidator_command(config, config_path.as_str()).await
         }

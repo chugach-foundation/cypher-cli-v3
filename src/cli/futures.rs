@@ -203,7 +203,9 @@ impl FuturesSubCommands for App<'_, '_> {
 pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("orders", Some(matches)) => {
-            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
+            let pubkey = matches
+                .value_of("pubkey")
+                .map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::Futures(FuturesSubCommand::Orders { pubkey }))
         }
         ("cancel", Some(matches)) => {
@@ -700,15 +702,14 @@ pub async fn process_futures_cancel_order(
         args,
     )];
 
-    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to submit transaction.");
-            return Err(Box::new(CliError::ClientError(e)));
-        }
-    };
+    let sig =
+        match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to submit transaction.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     println!(
         "Successfully cancelled order. Transaction signtaure: {}",
@@ -881,15 +882,14 @@ pub async fn process_futures_market_order(
         ),
     ];
 
-    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to submit transaction.");
-            return Err(Box::new(CliError::ClientError(e)));
-        }
-    };
+    let sig =
+        match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to submit transaction.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     println!(
         "Successfully submitted order. Transaction signtaure: {}",
@@ -1089,15 +1089,14 @@ pub async fn process_futures_close(
         ),
     ];
 
-    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to submit transaction.");
-            return Err(Box::new(CliError::ClientError(e)));
-        }
-    };
+    let sig =
+        match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to submit transaction.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     println!(
         "Successfully submitted order. Transaction signtaure: {}",
@@ -1283,15 +1282,14 @@ pub async fn process_futures_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to submit transaction.");
-            return Err(Box::new(CliError::ClientError(e)));
-        }
-    };
+    let sig =
+        match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to submit transaction.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     println!(
         "Successfully submitted order. Transaction signtaure: {}",
@@ -1348,15 +1346,14 @@ pub async fn process_futures_settle_funds(
         &keypair.pubkey(),
     )];
 
-    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("Failed to submit transaction.");
-            return Err(Box::new(CliError::ClientError(e)));
-        }
-    };
+    let sig =
+        match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to submit transaction.");
+                return Err(Box::new(CliError::ClientError(e)));
+            }
+        };
 
     println!(
         "Successfully settled funds. Transaction signtaure: {}",
