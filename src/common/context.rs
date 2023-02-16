@@ -177,15 +177,14 @@ pub mod manager {
                                 *g_ctx = update;
                                 drop(g_ctx);
                                 match self.send().await {
-                                    Ok(()) => (),
+                                    Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
                                     Err(e) => {
                                         warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
-                            Err(_) => {
-                                warn!("[{}] There was an error receiving global context update.", symbol);
-                                continue;
+                            Err(e) => {
+                                warn!("[{}] There was an error receiving global context update. Error: {:?}", symbol, e);
                             }
                         }
                     }
@@ -196,15 +195,14 @@ pub mod manager {
                                 *op_ctx = update;
                                 drop(op_ctx);
                                 match self.send().await {
-                                    Ok(()) => (),
+                                    Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
                                     Err(e) => {
                                         warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
-                            Err(_) => {
-                                warn!("[{}] There was an error receiving operation context update.", symbol);
-                                continue;
+                            Err(e) => {
+                                warn!("[{}] There was an error receiving operation context update. Error: {:?}", symbol, e);
                             }
                         }
                     }
@@ -215,15 +213,14 @@ pub mod manager {
                                 *oracle_info = update;
                                 drop(oracle_info);
                                 match self.send().await {
-                                    Ok(()) => (),
+                                    Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
                                     Err(e) => {
                                         warn!("[{}] There was an error sending execution context update: {:?}", symbol, e.to_string());
                                     }
                                 };
                             },
-                            Err(_) => {
-                                warn!("[{}] There was an error receiving oracle update.", symbol);
-                                continue;
+                            Err(e) => {
+                                warn!("[{}] There was an error receiving oracle update. Error: {:?}", symbol, e);
                             }
                         }
                     }
@@ -238,7 +235,7 @@ pub mod manager {
         }
 
         /// Sends an update to context subscribers via it's own [`Sender`].
-        async fn send(&self) -> Result<(), ContextManagerError>;
+        async fn send(&self) -> Result<usize, ContextManagerError>;
 
         /// Builds the [`Self::Output`] upon demand, representing the latest possible execution context.
         async fn build(&self) -> Self::Output;
@@ -306,17 +303,19 @@ pub mod builder {
                                 match self.process_update(&account_state).await {
                                     Ok(()) => {
                                         match self.send().await {
-                                            Ok(()) => (),
+                                            Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
                                             Err(e) => {
-                                                warn!("[{}] There was an error sending context update: {:?}", symbol, e.to_string());
+                                                warn!("[{}] There was an error sending context update: {:?}", symbol, e);
                                             }
                                         };
                                     },
-                                    Err(_) => () // let's just ignore this for now because we are filtering accounts we don't need through errors
+                                    Err(e) => {
+                                        warn!("[{}] There was an error processing account update. Error: {:?}", symbol, e);
+                                    }
                                 };
                             },
-                            Err(_e) => {
-                                warn!("[{}] There was an error receiving account state update.", symbol);
+                            Err(e) => {
+                                warn!("[{}] There was an error receiving account state update. Error: {:?}", symbol, e);
                             }
                         }
                     }
@@ -337,7 +336,7 @@ pub mod builder {
         ) -> Result<(), ContextBuilderError>;
 
         /// Sends an update to context subscribers via it's own [`Sender`].
-        async fn send(&self) -> Result<(), ContextBuilderError>;
+        async fn send(&self) -> Result<usize, ContextBuilderError>;
 
         /// Gets a clone of the [`Sender`].
         fn sender(&self) -> Arc<Sender<Self::Output>>;

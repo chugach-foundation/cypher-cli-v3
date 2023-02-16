@@ -1,6 +1,6 @@
 use log::{info, warn};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json;
+
 use solana_client::{client_error::ClientError, nonblocking::rpc_client::RpcClient};
 use solana_sdk::signature::Keypair;
 use std::{fmt::Debug, fs::File, path::PathBuf, str::FromStr, sync::Arc};
@@ -74,7 +74,7 @@ pub async fn get_user_info<T>(
     let signer = Arc::new(Keypair::from_bytes(&keypair.to_bytes()).unwrap());
 
     let (account_state, master_account) =
-        match get_or_create_account(&rpc_client, &keypair, config.account_number).await {
+        match get_or_create_account(&rpc_client, keypair, config.account_number).await {
             Ok(a) => a,
             Err(e) => {
                 warn!(
@@ -87,7 +87,7 @@ pub async fn get_user_info<T>(
 
     let (_sub_acccount_state, sub_account) = match get_or_create_sub_account(
         &rpc_client,
-        &keypair,
+        keypair,
         &master_account,
         config.sub_account_number,
     )

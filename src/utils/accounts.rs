@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 use anchor_spl::dex::serum_dex::state::OpenOrders;
 use cypher_client::{
     constants::SUB_ACCOUNT_ALIAS_LEN,
@@ -66,16 +67,7 @@ async fn create_orders_account(
         &authority.pubkey(),
         &authority.pubkey(),
     )];
-    match send_transactions(
-        &rpc_client,
-        ixs,
-        authority,
-        true,
-        Some((1_400_000, 1)),
-        None,
-    )
-    .await
-    {
+    match send_transactions(rpc_client, ixs, authority, true, Some((1_400_000, 1)), None).await {
         Ok(_s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -85,7 +77,7 @@ async fn get_orders_account(
     rpc_client: &Arc<RpcClient>,
     orders_account: &Pubkey,
 ) -> Result<Box<OrdersAccount>, ClientError> {
-    match get_cypher_zero_copy_account::<OrdersAccount>(&rpc_client, orders_account).await {
+    match get_cypher_zero_copy_account::<OrdersAccount>(rpc_client, orders_account).await {
         Ok(a) => Ok(a),
         Err(e) => Err(e),
     }
@@ -155,16 +147,7 @@ async fn create_spot_orders_account(
         &authority.pubkey(),
         &authority.pubkey(),
     )];
-    match send_transactions(
-        &rpc_client,
-        ixs,
-        authority,
-        true,
-        Some((1_400_000, 1)),
-        None,
-    )
-    .await
-    {
+    match send_transactions(rpc_client, ixs, authority, true, Some((1_400_000, 1)), None).await {
         Ok(_s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -174,7 +157,7 @@ async fn get_spot_orders_account(
     rpc_client: &Arc<RpcClient>,
     orders_account: &Pubkey,
 ) -> Result<OpenOrders, ClientError> {
-    match get_dex_account::<OpenOrders>(&rpc_client, orders_account).await {
+    match get_dex_account::<OpenOrders>(rpc_client, orders_account).await {
         Ok(a) => Ok(a),
         Err(e) => Err(e),
     }
@@ -237,16 +220,7 @@ async fn create_account(
         account_bump,
         account_number,
     )];
-    match send_transactions(
-        &rpc_client,
-        ixs,
-        authority,
-        true,
-        Some((1_400_000, 1)),
-        None,
-    )
-    .await
-    {
+    match send_transactions(rpc_client, ixs, authority, true, Some((1_400_000, 1)), None).await {
         Ok(_s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -256,7 +230,7 @@ async fn get_account(
     rpc_client: &Arc<RpcClient>,
     account: &Pubkey,
 ) -> Result<Box<CypherAccount>, ClientError> {
-    match get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, account).await {
+    match get_cypher_zero_copy_account::<CypherAccount>(rpc_client, account).await {
         Ok(a) => Ok(a),
         Err(e) => Err(e),
     }
@@ -325,16 +299,7 @@ async fn create_sub_account(
         sub_account_number,
         sub_account_alias,
     )];
-    match send_transactions(
-        &rpc_client,
-        ixs,
-        authority,
-        true,
-        Some((1_400_000, 1)),
-        None,
-    )
-    .await
-    {
+    match send_transactions(rpc_client, ixs, authority, true, Some((1_400_000, 1)), None).await {
         Ok(_s) => Ok(()),
         Err(e) => Err(e),
     }
@@ -344,7 +309,7 @@ async fn get_sub_account(
     rpc_client: &Arc<RpcClient>,
     sub_account: &Pubkey,
 ) -> Result<Box<CypherSubAccount>, ClientError> {
-    match get_cypher_zero_copy_account::<CypherSubAccount>(&rpc_client, sub_account).await {
+    match get_cypher_zero_copy_account::<CypherSubAccount>(rpc_client, sub_account).await {
         Ok(a) => Ok(a),
         Err(e) => Err(e),
     }

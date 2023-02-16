@@ -99,6 +99,7 @@ pub struct SpotContextBuilder {
 
 impl SpotContextBuilder {
     /// Creates a new [`SpotContextBuilder`].
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         accounts_cache: Arc<AccountsCache>,
         shutdown_sender: Arc<Sender<bool>>,
@@ -267,12 +268,12 @@ impl ContextBuilder for SpotContextBuilder {
         ))
     }
 
-    async fn send(&self) -> Result<(), ContextBuilderError> {
+    async fn send(&self) -> Result<usize, ContextBuilderError> {
         let state = self.state.read().await;
         let ctx =
             OperationContext::build(&state.orderbook, &state.open_orders, &state.event_queue).await;
         match self.update_sender.send(ctx) {
-            Ok(_) => Ok(()),
+            Ok(r) => Ok(r),
             Err(e) => Err(ContextBuilderError::OperationContextSendError(e)),
         }
     }

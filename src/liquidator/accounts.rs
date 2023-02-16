@@ -84,7 +84,8 @@ impl CypherAccountsService {
             }
         }
 
-        Ok(updates_handler.await.unwrap())
+        updates_handler.await.unwrap();
+        Ok(())
     }
 
     pub async fn process_updates(self: &Arc<Self>) {
@@ -138,8 +139,10 @@ impl CypherAccountsService {
                 }
                 None => {
                     info!("User {} not found, adding to cache.", account.authority);
-                    let mut user_ctx = UserContext::default();
-                    user_ctx.authority = account.authority;
+                    let mut user_ctx = UserContext {
+                        authority: account.authority,
+                        ..Default::default()
+                    };
                     user_ctx.account_ctx = AccountContext::new(account_state.account, account);
                     let clone = user_ctx.clone();
                     self.users_map.insert(user_ctx.authority, user_ctx);
@@ -162,8 +165,10 @@ impl CypherAccountsService {
                 }
                 None => {
                     info!("User {} not found, adding to cache.", sub_account.authority);
-                    let mut user_ctx = UserContext::default();
-                    user_ctx.authority = sub_account.authority;
+                    let mut user_ctx = UserContext {
+                        authority: sub_account.authority,
+                        ..Default::default()
+                    };
                     user_ctx
                         .sub_account_ctxs
                         .push(SubAccountContext::new(account_state.account, sub_account));

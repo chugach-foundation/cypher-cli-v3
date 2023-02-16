@@ -48,6 +48,7 @@ pub struct SpotMaker {
 }
 
 impl SpotMaker {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rpc_client: Arc<RpcClient>,
         signer: Arc<Keypair>,
@@ -235,8 +236,8 @@ impl Maker for SpotMaker {
                 &cache_account::id(),
                 &self.user_info.master_account,
                 &self.user_info.sub_account,
-                &self.market_info.asset_pool_nodes.first().unwrap(),
-                &self.market_info.quote_pool_nodes.first().unwrap(),
+                self.market_info.asset_pool_nodes.first().unwrap(),
+                self.market_info.quote_pool_nodes.first().unwrap(),
                 &self.market_info.asset_mint,
                 &self.market_info.asset_vault,
                 &self.market_info.quote_vault,
@@ -286,11 +287,7 @@ impl Maker for SpotMaker {
         let mut cancel_order_ixs = Vec::new();
 
         for order_cancel in order_cancels {
-            let is_client_id = if order_cancel.order_id == u128::default() {
-                true
-            } else {
-                false
-            };
+            let is_client_id = order_cancel.order_id == u128::default();
             let order_id = if is_client_id {
                 order_cancel.client_order_id as u128
             } else {
@@ -301,8 +298,8 @@ impl Maker for SpotMaker {
                 &cache_account::id(),
                 &self.user_info.master_account,
                 &self.user_info.sub_account,
-                &self.market_info.asset_pool_nodes.first().unwrap(),
-                &self.market_info.quote_pool_nodes.first().unwrap(),
+                self.market_info.asset_pool_nodes.first().unwrap(),
+                self.market_info.quote_pool_nodes.first().unwrap(),
                 &self.market_info.asset_mint,
                 &self.market_info.asset_vault,
                 &self.market_info.quote_vault,

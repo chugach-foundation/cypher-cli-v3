@@ -256,32 +256,17 @@ pub fn parse_sub_account_command(
 ) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("close", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_number = match matches.value_of("sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Close {
                 account_number,
                 sub_account_number,
             }))
         }
         ("create", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_number = match matches.value_of("sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_alias = match matches.value_of("sub-account-alias") {
-                Some(a) => Some(a.to_string()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_alias = matches.value_of("sub-account-alias").map(|a| a.to_string());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Create {
                 account_number,
                 sub_account_number,
@@ -289,14 +274,8 @@ pub fn parse_sub_account_command(
             }))
         }
         ("deposit", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_number = match matches.value_of("sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {
@@ -304,7 +283,7 @@ pub fn parse_sub_account_command(
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid amount.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -323,14 +302,8 @@ pub fn parse_sub_account_command(
             }))
         }
         ("withdraw", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_number = match matches.value_of("sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {
@@ -338,7 +311,7 @@ pub fn parse_sub_account_command(
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid amount.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -357,18 +330,9 @@ pub fn parse_sub_account_command(
             }))
         }
         ("peek", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let sub_account_number = match matches.value_of("sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let pubkey = match matches.value_of("pubkey") {
-                Some(a) => Some(Pubkey::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let sub_account_number = matches.value_of("sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::SubAccount(SubAccountSubCommand::Peek {
                 account_number,
                 sub_account_number,
@@ -376,18 +340,9 @@ pub fn parse_sub_account_command(
             }))
         }
         ("transfer", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let from_sub_account_number = match matches.value_of("from-sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let to_sub_account_number = match matches.value_of("to-sub-account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let from_sub_account_number = matches.value_of("from-sub-account-number").map(|a| u8::from_str(a).unwrap());
+            let to_sub_account_number = matches.value_of("to-sub-account-number").map(|a| u8::from_str(a).unwrap());
             let symbol = matches.value_of("symbol").unwrap().to_string();
             let amount = match matches.value_of("amount") {
                 Some(s) => match I80F48::from_str(s) {
@@ -395,7 +350,7 @@ pub fn parse_sub_account_command(
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid amount.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -477,7 +432,7 @@ pub async fn create_sub_account(
 
     let blockhash = rpc_client.get_latest_blockhash().await?;
 
-    let tx = create_transaction(blockhash, &[ix], &keypair, Some(&[&keypair]));
+    let tx = create_transaction(blockhash, &[ix], keypair, Some(&[keypair]));
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
@@ -518,7 +473,7 @@ pub async fn close_sub_account(
 
     let blockhash = rpc_client.get_latest_blockhash().await?;
 
-    let tx = create_transaction(blockhash, &[ix], &keypair, Some(&[&keypair]));
+    let tx = create_transaction(blockhash, &[ix], keypair, Some(&[keypair]));
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
@@ -548,7 +503,7 @@ pub async fn deposit(
     };
     println!("Using Account: {}", account);
 
-    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &account)
         .await
         .unwrap();
 
@@ -562,7 +517,7 @@ pub async fn deposit(
 
     let mut ixs: Vec<Instruction> = Vec::new();
 
-    let ctx = CypherContext::load(&rpc_client).await.unwrap();
+    let ctx = CypherContext::load(rpc_client).await.unwrap();
     let pools = ctx.pools.read().await;
     let encoded_symbol = encode_string(symbol);
 
@@ -696,7 +651,7 @@ pub async fn withdraw(
     };
     println!("Using Account: {}", account);
 
-    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+    let cypher_account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &account)
         .await
         .unwrap();
 
@@ -710,7 +665,7 @@ pub async fn withdraw(
 
     let mut ixs: Vec<Instruction> = Vec::new();
 
-    let ctx = CypherContext::load(&rpc_client).await.unwrap();
+    let ctx = CypherContext::load(rpc_client).await.unwrap();
     let pools = ctx.pools.read().await;
     let encoded_symbol = encode_string(symbol);
 
@@ -855,11 +810,11 @@ pub async fn transfer_between_sub_accounts(
     };
     println!("Using destination Sub Account: {}", to_sub_account);
 
-    let ctx = CypherContext::load(&rpc_client).await.unwrap();
+    let ctx = CypherContext::load(rpc_client).await.unwrap();
     let pools = ctx.pools.read().await;
     let encoded_symbol = encode_string(symbol);
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account_address)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &account_address)
         .await
         .unwrap();
 
@@ -965,17 +920,17 @@ pub async fn peek_sub_account(
     println!("Using Sub Account: {}", sub_account);
 
     let cache_account = get_cypher_zero_copy_account::<CacheAccount>(
-        &rpc_client,
+        rpc_client,
         &cypher_client::cache_account::id(),
     )
     .await
     .unwrap();
 
-    let sub_account = get_cypher_zero_copy_account::<CypherSubAccount>(&rpc_client, &sub_account)
+    let sub_account = get_cypher_zero_copy_account::<CypherSubAccount>(rpc_client, &sub_account)
         .await
         .unwrap();
 
-    let ctx = CypherContext::load(&rpc_client).await.unwrap();
+    let ctx = CypherContext::load(rpc_client).await.unwrap();
 
     let pools = ctx.pools.read().await;
     let futures_markets = ctx.futures_markets.read().await;

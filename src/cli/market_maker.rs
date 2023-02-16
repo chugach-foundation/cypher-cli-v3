@@ -148,8 +148,8 @@ pub async fn process_market_maker_command(
         Arc::new(GlobalContextBuilder::new(
             accounts_cache.clone(),
             shutdown_sender.clone(),
-            user_info.master_account.clone(),
-            user_info.sub_account.clone(),
+            user_info.master_account,
+            user_info.sub_account,
         ));
 
     let maker_context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send> =

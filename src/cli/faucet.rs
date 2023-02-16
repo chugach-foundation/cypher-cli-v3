@@ -96,7 +96,7 @@ pub async fn request_faucet(config: &CliConfig, mint: &Pubkey) -> Result<CliResu
     ));
 
     let sig =
-        send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await?;
+        send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None).await?;
 
     println!(
         "Sucessfully submitted transaction. Signature: {}",
@@ -113,7 +113,7 @@ pub async fn list_faucets(config: &CliConfig) -> Result<CliResult, Box<dyn error
         std::mem::size_of::<Faucet>() as u64 + 8,
     )];
 
-    let mut program_accounts = get_program_accounts(&rpc_client, filters, &faucet_client::ID)
+    let mut program_accounts = get_program_accounts(rpc_client, filters, &faucet_client::ID)
         .await
         .unwrap();
 

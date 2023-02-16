@@ -16,7 +16,7 @@ pub async fn parse_args(matches: &ArgMatches<'_>) -> Result<CliConfig, Box<dyn e
 
     let (_is_moniker, _is_valid_url) = match is_url_or_moniker(json_rpc_url) {
         Ok(_) => (false, true),
-        Err(_) => match json_rpc_url.as_ref() {
+        Err(_) => match json_rpc_url {
             "m" | "mainnet-beta" => (true, true),
             "t" | "testnet" => (true, true),
             "d" | "devnet" => (true, true),
@@ -25,7 +25,7 @@ pub async fn parse_args(matches: &ArgMatches<'_>) -> Result<CliConfig, Box<dyn e
         },
     };
 
-    let normalized_url = normalize_to_url_if_moniker(json_rpc_url.to_string());
+    let normalized_url = normalize_to_url_if_moniker(json_rpc_url);
     println!("Using JSON RPC API URL: {}", normalized_url);
 
     println!("Loading keypair from: {}", keypair_path);

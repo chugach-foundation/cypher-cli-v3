@@ -140,7 +140,7 @@ pub async fn get_context_info(
                 quote_multiplier: market_ctx.state.inner.quote_multiplier,
             },
             context_accounts: Accounts::Perpetuals(PerpMarketInfo {
-                state: market_ctx.state.as_ref().clone(),
+                state: *market_ctx.state.as_ref(),
                 market: market_ctx.address,
                 orderbook: market_ctx.state.inner.orderbook,
                 bids: market_ctx.state.inner.bids,
@@ -194,7 +194,7 @@ pub async fn get_context_info(
                 quote_multiplier: market_ctx.state.inner.quote_multiplier,
             },
             context_accounts: Accounts::Futures(FuturesMarketInfo {
-                state: market_ctx.state.as_ref().clone(),
+                state: *market_ctx.state.as_ref(),
                 market: market_ctx.address,
                 orderbook: market_ctx.state.inner.orderbook,
                 bids: market_ctx.state.inner.bids,
@@ -259,7 +259,7 @@ pub async fn get_context_info(
                 quote_multiplier: spot_market.state.pc_lot_size,
             },
             context_accounts: Accounts::Spot(SpotMarketInfo {
-                state: spot_market.state.clone(),
+                state: spot_market.state,
                 market: spot_market.address,
                 bids: spot_market.bids,
                 asks: spot_market.asks,
@@ -421,9 +421,9 @@ pub async fn get_context_builder(
     let context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send> =
         match &context_info.context_accounts {
             Accounts::Futures(f) => Arc::new(DerivativeContextBuilder::<FuturesMarket>::new(
-                accounts_cache.clone(),
-                shutdown_sender.clone(),
-                f.state.clone(),
+                accounts_cache,
+                shutdown_sender,
+                f.state,
                 f.market,
                 f.event_queue,
                 f.bids,
@@ -434,9 +434,9 @@ pub async fn get_context_builder(
                 context_info.symbol.to_string(),
             )),
             Accounts::Perpetuals(p) => Arc::new(DerivativeContextBuilder::<PerpetualMarket>::new(
-                accounts_cache.clone(),
-                shutdown_sender.clone(),
-                p.state.clone(),
+                accounts_cache,
+                shutdown_sender,
+                p.state,
                 p.market,
                 p.event_queue,
                 p.bids,
@@ -447,9 +447,9 @@ pub async fn get_context_builder(
                 context_info.symbol.to_string(),
             )),
             Accounts::Spot(s) => Arc::new(SpotContextBuilder::new(
-                accounts_cache.clone(),
-                shutdown_sender.clone(),
-                s.state.clone(),
+                accounts_cache,
+                shutdown_sender,
+                s.state,
                 s.market,
                 s.event_queue,
                 s.bids,
@@ -496,7 +496,7 @@ pub fn get_context_manager_from_config(
             OracleInfoInput = OracleInfo,
         >,
     > = Arc::new(CypherExecutionContextManager::new(
-        shutdown_sender.clone(),
+        shutdown_sender,
         global_context_builder.clone(),
         operation_context_builder.clone(),
         oracle_provider.clone(),
@@ -513,7 +513,7 @@ pub async fn get_oracle_provider(
     let oracle_provider: Arc<dyn OracleProvider<Input = GlobalContext> + Send> =
         Arc::new(CypherOracleProvider::new(
             global_context_builder.clone(),
-            shutdown_sender.clone(),
+            shutdown_sender,
             context_info.market_metadata.cache_index as usize,
             context_info.symbol.to_string(),
         ));

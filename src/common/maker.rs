@@ -130,10 +130,10 @@ pub trait Maker: Send + Sync {
                         Ok(ctx) => {
                             match self.process_update(&ctx).await {
                                 Ok(()) => {
-                                    info!("[{}] Sucessfully processed order manager update.",  symbol);
+                                    info!("[{}] Sucessfully processed order manager update.", symbol);
                                 },
                                 Err(e) => {
-                                    warn!("[{}] There was an error during order manager update: {:?}",  symbol, e.to_string());
+                                    warn!("[{}] There was an error during order manager update. Error: {:?}", symbol, e);
                                 }
                             }
                             let mut context_writer = self.context_writer().await;
@@ -144,17 +144,17 @@ pub trait Maker: Send + Sync {
                                     info!("[{}] Maker pulse: {:?}",  symbol, res);
                                 },
                                 Err(e) => {
-                                    warn!("[{}] There was an error processing maker pulse: {:?}",  symbol, e.to_string());
+                                    warn!("[{}] There was an error processing maker pulse. Error: {:?}", symbol, e);
                                 }
                             };
                         },
-                        Err(_e) => {
-                            warn!("[{}] There was an error receiving maker input context update.",  symbol);
+                        Err(e) => {
+                            warn!("[{}] There was an error receiving maker input context update. Error: {:?}", symbol, e);
                         }
                     }
                 }
                 _ = shutdown_receiver.recv() => {
-                    info!("[{}] Shutdown signal received, stopping..",  symbol);
+                    info!("[{}] Shutdown signal received, stopping..", symbol);
                     break;
                 }
             }
@@ -244,7 +244,6 @@ pub trait Maker: Send + Sync {
                         side: order.side,
                         layer: order.layer,
                     });
-                    ()
                 }
             };
         }
@@ -375,7 +374,7 @@ pub trait Maker: Send + Sync {
 
     /// Cancels expired orders according to their time in force.
     async fn cancel_expired_orders(&self, orders: &[ManagedOrder]) -> Result<usize, MakerError> {
-        let expired_orders = self.get_expired_orders(&orders);
+        let expired_orders = self.get_expired_orders(orders);
 
         info!("[{}] Updating orders..", self.symbol(),);
 
@@ -580,7 +579,7 @@ pub trait Maker: Send + Sync {
             }) {
                 Some(_) => {}
                 None => {
-                    if !inflight_cancels_to_remove.contains(&inflight_cancel) {
+                    if !inflight_cancels_to_remove.contains(inflight_cancel) {
                         info!(
                             "[{}] Inflight cancel confirmed. Side: {:?} - Order ID: {} - Client Order ID: {}",
                             symbol,
@@ -646,28 +645,25 @@ pub trait Maker: Send + Sync {
         for inflight_order in inflight_orders.iter() {
             // check if any of our "inflight orders" have now been confirmed
             // and if so, we should remove them from our tracking
-            match ctx_open_orders
+            if let Some(o) = ctx_open_orders
                 .iter()
                 .find(|p| p.client_order_id == inflight_order.client_order_id)
             {
-                Some(o) => {
-                    let mut order = inflight_order.clone();
-                    order.order_id = o.order_id;
-                    if !inflight_orders_to_move.contains(&order) {
-                        info!(
-                            "[{}] Inflight order confirmed. Side: {:?} - Price: {} - Size: {} - Layer: {} - Order ID: {} - Client Order ID: {}",
-                            symbol,
-                            inflight_order.side,
-                            inflight_order.price,
-                            inflight_order.base_quantity,
-                            inflight_order.layer,
-                            inflight_order.order_id,
-                            inflight_order.client_order_id,
-                        );
-                        inflight_orders_to_move.push(order);
-                    }
+                let mut order = inflight_order.clone();
+                order.order_id = o.order_id;
+                if !inflight_orders_to_move.contains(&order) {
+                    info!(
+                        "[{}] Inflight order confirmed. Side: {:?} - Price: {} - Size: {} - Layer: {} - Order ID: {} - Client Order ID: {}",
+                        symbol,
+                        inflight_order.side,
+                        inflight_order.price,
+                        inflight_order.base_quantity,
+                        inflight_order.layer,
+                        inflight_order.order_id,
+                        inflight_order.client_order_id,
+                    );
+                    inflight_orders_to_move.push(order);
                 }
-                None => {}
             };
             // we have to admit the possibility that something might have gone wrong with an update
             // or an inflight order might not have materialized and it can get us stuck in a loop

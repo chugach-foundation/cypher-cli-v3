@@ -113,28 +113,19 @@ impl AccountSubCommands for App<'_, '_> {
 pub fn parse_account_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("close", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Close {
                 account_number,
             }))
         }
         ("create", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Create {
                 account_number,
             }))
         }
         ("create-whitelisted", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
             let whitelist = Pubkey::from_str(matches.value_of("whitelist").unwrap()).unwrap();
             let private_clearing =
                 Pubkey::from_str(matches.value_of("private-clearing").unwrap()).unwrap();
@@ -145,14 +136,8 @@ pub fn parse_account_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
             }))
         }
         ("peek", Some(matches)) => {
-            let account_number = match matches.value_of("account-number") {
-                Some(a) => Some(u8::from_str(a).unwrap()),
-                None => None,
-            };
-            let pubkey = match matches.value_of("pubkey") {
-                Some(a) => Some(Pubkey::from_str(a).unwrap()),
-                None => None,
-            };
+            let account_number = matches.value_of("account-number").map(|a| u8::from_str(a).unwrap());
+            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::Account(AccountSubCommand::Peek {
                 account_number,
                 pubkey,
@@ -197,7 +182,7 @@ pub async fn create_account(
 
     let blockhash = rpc_client.get_latest_blockhash().await?;
 
-    let tx = create_transaction(blockhash, &[ix], &keypair, Some(&[&keypair]));
+    let tx = create_transaction(blockhash, &[ix], keypair, Some(&[keypair]));
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
@@ -228,8 +213,8 @@ pub async fn create_whitelisted_account(
     println!("Creating Account: {}", account);
 
     let ix = create_whitelisted_account_ix(
-        &private_clearing,
-        &whitelist,
+        private_clearing,
+        whitelist,
         &keypair.pubkey(),
         &keypair.pubkey(),
         &account,
@@ -239,7 +224,7 @@ pub async fn create_whitelisted_account(
 
     let blockhash = rpc_client.get_latest_blockhash().await?;
 
-    let tx = create_transaction(blockhash, &[ix], &keypair, Some(&[&keypair]));
+    let tx = create_transaction(blockhash, &[ix], keypair, Some(&[keypair]));
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
@@ -269,7 +254,7 @@ pub async fn close_account(
 
     let blockhash = rpc_client.get_latest_blockhash().await?;
 
-    let tx = create_transaction(blockhash, &[ix], &keypair, Some(&[&keypair]));
+    let tx = create_transaction(blockhash, &[ix], keypair, Some(&[keypair]));
 
     let sig = rpc_client
         .send_and_confirm_transaction_with_spinner(&tx)
@@ -302,7 +287,7 @@ pub async fn peek_account(
     };
     println!("Using Account: {}", account);
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &account)
         .await
         .unwrap();
 

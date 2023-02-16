@@ -94,22 +94,24 @@ pub trait OracleProvider: Send + Sync {
                             match self.process_update(&input) {
                                 Ok(output) => {
                                     match self.send(output).await {
-                                        Ok(()) => (),
+                                        Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
                                         Err(e) => {
-                                            warn!("[{}] There was an error sending oracle price update: {:?}",  symbol, e.to_string());
+                                            warn!("[{}] There was an error sending oracle price update. Error: {:?}", symbol, e);
                                         }
                                     };
                                 },
-                                Err(_) => () // let's just ignore this for now because we are filtering accounts we don't need through errors
+                                Err(e) => {
+                                    warn!("[{}] There was an error processing account update. Error: {:?}", symbol, e);
+                                }
                             };
                         },
-                        Err(_e) => {
-                            warn!("[{}] There was an error receiving account state update.",  symbol);
+                        Err(e) => {
+                            warn!("[{}] There was an error receiving account state update. Error: {:?}", symbol, e);
                         }
                     }
                 }
                 _ = shutdown_receiver.recv() => {
-                    info!("[{}] Shutdown signal received, stopping..",  symbol);
+                    info!("[{}] Shutdown signal received, stopping..", symbol);
                     break;
                 }
             }
@@ -125,10 +127,10 @@ pub trait OracleProvider: Send + Sync {
     fn output_sender(&self) -> Arc<Sender<OracleInfo>>;
 
     /// Sends an update to oracle price feed subscribers via it's own [`Sender`].
-    async fn send(&self, output: OracleInfo) -> Result<(), OracleProviderError> {
+    async fn send(&self, output: OracleInfo) -> Result<usize, OracleProviderError> {
         let sender = self.output_sender();
         match sender.send(output) {
-            Ok(_) => Ok(()), // we can safely ignore this result
+            Ok(r) => Ok(r), // we can safely ignore this result
             Err(e) => Err(OracleProviderError::OutputSendError(e)),
         }
     }

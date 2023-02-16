@@ -85,16 +85,13 @@ impl ContextBuilder for GlobalContextBuilder {
         self.shutdown_sender.subscribe()
     }
 
-    async fn send(&self) -> Result<(), ContextBuilderError> {
+    async fn send(&self) -> Result<usize, ContextBuilderError> {
         let ctx = self.state.read().await;
         match self.update_sender.send(GlobalContext {
             cache: ctx.cache.clone(),
             user: ctx.user.clone(),
         }) {
-            Ok(r) => {
-                info!("Successfully sent context update to {} receivers.", r);
-                Ok(())
-            }
+            Ok(r) => Ok(r),
             Err(e) => Err(ContextBuilderError::GlobalContextSendError(e)),
         }
     }

@@ -63,7 +63,7 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
     let cache_account = get_cypher_zero_copy_account::<CacheAccount>(
-        &rpc_client,
+        rpc_client,
         &cypher_client::cache_account::id(),
     )
     .await
@@ -73,7 +73,7 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
         std::mem::size_of::<FuturesMarket>() as u64 + 8,
     )];
 
-    let program_accounts = get_program_accounts(&rpc_client, filters, &cypher_client::ID)
+    let program_accounts = get_program_accounts(rpc_client, filters, &cypher_client::ID)
         .await
         .unwrap();
 
@@ -121,7 +121,7 @@ pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn 
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
     let cache_account = get_cypher_zero_copy_account::<CacheAccount>(
-        &rpc_client,
+        rpc_client,
         &cypher_client::cache_account::id(),
     )
     .await
@@ -131,7 +131,7 @@ pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn 
         std::mem::size_of::<PerpetualMarket>() as u64 + 8,
     )];
 
-    let program_accounts = get_program_accounts(&rpc_client, filters, &cypher_client::ID)
+    let program_accounts = get_program_accounts(rpc_client, filters, &cypher_client::ID)
         .await
         .unwrap();
 
@@ -167,7 +167,7 @@ pub async fn list_pools(config: &CliConfig) -> Result<CliResult, Box<dyn error::
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
     let cache_account = get_cypher_zero_copy_account::<CacheAccount>(
-        &rpc_client,
+        rpc_client,
         &cypher_client::cache_account::id(),
     )
     .await
@@ -177,7 +177,7 @@ pub async fn list_pools(config: &CliConfig) -> Result<CliResult, Box<dyn error::
         std::mem::size_of::<Pool>() as u64 + 8,
     )];
 
-    let program_accounts = get_program_accounts(&rpc_client, filters, &cypher_client::ID)
+    let program_accounts = get_program_accounts(rpc_client, filters, &cypher_client::ID)
         .await
         .unwrap();
 

@@ -45,6 +45,7 @@ pub struct PerpsMaker {
 }
 
 impl PerpsMaker {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         rpc_client: Arc<RpcClient>,
         signer: Arc<Keypair>,
@@ -246,7 +247,7 @@ impl Maker for PerpsMaker {
                 &self.market_info.event_queue,
                 &self.market_info.bids,
                 &self.market_info.asks,
-                &self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
+                self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
                 &self.signer.pubkey(),
                 NewDerivativeOrderArgs {
                     side: order_placement.side,
@@ -283,11 +284,7 @@ impl Maker for PerpsMaker {
         let mut cancel_order_ixs = Vec::new();
 
         for order_cancel in order_cancels {
-            let is_client_id = if order_cancel.order_id == u128::default() {
-                true
-            } else {
-                false
-            };
+            let is_client_id = order_cancel.order_id == u128::default();
             let order_id = if is_client_id {
                 order_cancel.client_order_id as u128
             } else {
@@ -310,7 +307,7 @@ impl Maker for PerpsMaker {
                 &self.market_info.event_queue,
                 &self.market_info.bids,
                 &self.market_info.asks,
-                &self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
+                self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
                 &self.signer.pubkey(),
                 CancelOrderArgs {
                     order_id,

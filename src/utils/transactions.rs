@@ -37,7 +37,7 @@ pub async fn send_cancels(
     };
 
     for (idx, ix) in ixs.iter().enumerate() {
-        if txn_builder.len() != 0 {
+        if !txn_builder.is_empty() {
             let tx = txn_builder.build(blockhash, signer, None);
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
@@ -77,7 +77,7 @@ pub async fn send_cancels(
         }
     }
 
-    if !submitted || txn_builder.len() != 0 {
+    if !submitted || !txn_builder.is_empty() {
         let tx = txn_builder.build(blockhash, signer, None);
         let res = send_transaction(rpc_client, &tx, confirm).await;
         match res {
@@ -130,7 +130,7 @@ pub async fn send_placements(
     };
 
     for (idx, ix) in ixs.iter().enumerate() {
-        if txn_builder.len() != 0 {
+        if !txn_builder.is_empty() {
             let tx = txn_builder.build(blockhash, signer, None);
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
@@ -163,7 +163,7 @@ pub async fn send_placements(
         }
     }
 
-    if !submitted || txn_builder.len() != 0 {
+    if !submitted || !txn_builder.is_empty() {
         let tx = txn_builder.build(blockhash, signer, None);
         let res = send_transaction(rpc_client, &tx, confirm).await;
         match res {

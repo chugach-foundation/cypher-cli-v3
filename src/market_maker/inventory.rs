@@ -18,6 +18,7 @@ pub struct ShapeFunctionInventoryManager {
 }
 
 impl ShapeFunctionInventoryManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         market_identifier: Pubkey,
         is_derivative: bool,

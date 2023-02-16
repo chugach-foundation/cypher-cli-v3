@@ -194,10 +194,7 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
             }))
         }
         ("orders", Some(matches)) => {
-            let pubkey = match matches.value_of("pubkey") {
-                Some(a) => Some(Pubkey::from_str(a).unwrap()),
-                None => None,
-            };
+            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::Spot(SpotSubCommand::Orders { pubkey }))
         }
         ("market", Some(matches)) => {
@@ -236,7 +233,7 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid order size.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -289,7 +286,7 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid order size.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -307,7 +304,7 @@ pub fn parse_spot_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid price: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -431,7 +428,7 @@ pub async fn process_spot_market_order(
         .trim_matches(char::from(0));
     let quote_pool = pools
         .iter()
-        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC".to_string())
+        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC")
         .unwrap();
     let quote_pool_node = quote_pool.pool_nodes.first().unwrap(); // TODO: change this
 
@@ -449,7 +446,7 @@ pub async fn process_spot_market_order(
         &sub_account,
     );
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
 
@@ -461,7 +458,7 @@ pub async fn process_spot_market_order(
         .collect::<Vec<Pubkey>>();
 
     let _orders_account_state = match get_or_create_spot_orders_account(
-        &rpc_client,
+        rpc_client,
         keypair,
         &master_account,
         &sub_account,
@@ -609,7 +606,7 @@ pub async fn process_spot_market_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -668,7 +665,7 @@ pub async fn process_spot_limit_order(
         .trim_matches(char::from(0));
     let quote_pool = pools
         .iter()
-        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC".to_string())
+        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC")
         .unwrap();
     let quote_pool_node = quote_pool.pool_nodes.first().unwrap(); // TODO: change this
 
@@ -701,7 +698,7 @@ pub async fn process_spot_limit_order(
         &sub_account,
     );
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
 
@@ -713,7 +710,7 @@ pub async fn process_spot_limit_order(
         .collect::<Vec<Pubkey>>();
 
     let _orders_account_state = match get_or_create_spot_orders_account(
-        &rpc_client,
+        rpc_client,
         keypair,
         &master_account,
         &sub_account,
@@ -835,7 +832,7 @@ pub async fn process_spot_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -890,7 +887,7 @@ pub async fn process_spot_settle_funds(
         .trim_matches(char::from(0));
     let quote_pool = pools
         .iter()
-        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC".to_string())
+        .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC")
         .unwrap();
     let quote_pool_node = quote_pool.pool_nodes.first().unwrap(); // TODO: change this
 
@@ -908,7 +905,7 @@ pub async fn process_spot_settle_funds(
         &sub_account,
     );
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
 
@@ -948,7 +945,7 @@ pub async fn process_spot_settle_funds(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,

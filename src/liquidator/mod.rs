@@ -1,3 +1,4 @@
+#![allow(clippy::too_many_arguments)]
 pub mod accounts;
 pub mod check;
 pub mod config;
@@ -158,7 +159,7 @@ impl Liquidator {
                 self.clearings_map
                     .insert(liqor_ctx.account_ctx.state.clearing, clearing.clone());
                 ClearingInfo {
-                    state: clearing.clone(),
+                    state: clearing,
                     address: liqor_ctx.account_ctx.state.clearing,
                 }
             }
@@ -184,13 +185,13 @@ impl Liquidator {
                 self.clearings_map
                     .insert(liqee_ctx.account_ctx.state.clearing, clearing.clone());
                 ClearingInfo {
-                    state: clearing.clone(),
+                    state: clearing,
                     address: liqee_ctx.account_ctx.state.clearing,
                 }
             }
         };
 
-        let liquidation_check = check_collateral(&cache_ctx, &liqee_ctx, &liqee_clearing);
+        let liquidation_check = check_collateral(&cache_ctx, liqee_ctx, &liqee_clearing);
 
         info!("{:?}", liquidation_check);
 
@@ -216,7 +217,7 @@ impl Liquidator {
                         &cache_ctx,
                         &liqor_ctx,
                         &liqor_clearing,
-                        &liqee_ctx,
+                        liqee_ctx,
                         &liqee_clearing,
                     )
                     .await
@@ -243,7 +244,7 @@ impl Liquidator {
                             Ok(s) => s,
                             Err(e) => {
                                 warn!("Failed to submit transaction.");
-                                return Err(Error::ClientError(e));
+                                return Err(Error::Client(e));
                             }
                         };
 
@@ -313,7 +314,7 @@ impl Liquidator {
                             Ok(s) => s,
                             Err(e) => {
                                 warn!("Failed to submit transaction.");
-                                return Err(Error::ClientError(e));
+                                return Err(Error::Client(e));
                             }
                         };
 
@@ -849,7 +850,7 @@ async fn get_liquidation_ix(
                 liqor_sub_account_ctx,
                 liqee_ctx,
                 liqee_sub_account_ctx,
-                &simulation_args,
+                simulation_args,
             )
         }
         SimulationType::Perpetuals {
@@ -865,7 +866,7 @@ async fn get_liquidation_ix(
                 liqor_sub_account_ctx,
                 liqee_ctx,
                 liqee_sub_account_ctx,
-                &simulation_args,
+                simulation_args,
             )
         }
         SimulationType::Spot {
@@ -882,7 +883,7 @@ async fn get_liquidation_ix(
                 liqor_sub_account_ctx,
                 liqee_ctx,
                 liqee_sub_account_ctx,
-                &simulation_args,
+                simulation_args,
             )
             .await)
         }
@@ -1022,7 +1023,7 @@ fn get_liquidate_perp_position_ix(
         &quote_pool_node,
         &liqor_ctx.account_ctx.state.authority,
     )?);
-    return Ok(ixs);
+    Ok(ixs)
 }
 
 fn get_liquidate_futures_position_ix(
@@ -1105,7 +1106,7 @@ fn get_liquidate_futures_position_ix(
         &quote_pool_node,
         &liqor_ctx.account_ctx.state.authority,
     )?);
-    return Ok(ixs);
+    Ok(ixs)
 }
 
 fn get_highest_simulation_value(

@@ -4,11 +4,12 @@ use thiserror::Error;
 use super::{hedger::HedgerError, maker::MakerError};
 
 #[derive(Error, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum StrategyError {
     #[error(transparent)]
-    MakerError(#[from] MakerError),
+    Maker(#[from] MakerError),
     #[error(transparent)]
-    HedgerError(#[from] HedgerError),
+    Hedger(#[from] HedgerError),
 }
 
 /// A trait that represents shared functionality for strategies.

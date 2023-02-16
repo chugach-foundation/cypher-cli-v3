@@ -5,11 +5,11 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error(transparent)]
-    ClientError(#[from] ClientError),
+    Client(#[from] ClientError),
     #[error(transparent)]
-    AnchorError(#[from] anchor_lang::error::Error),
+    Anchor(#[from] anchor_lang::error::Error),
     #[error(transparent)]
-    ProgramError(#[from] ProgramError),
+    Program(#[from] ProgramError),
     #[error("Liquidator c-ratio below initialization.")]
     LiquidatorCRatio,
     #[error("An unrecognized account was received.")]

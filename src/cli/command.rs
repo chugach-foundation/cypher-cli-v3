@@ -111,7 +111,7 @@ pub async fn process_command(config: &CliConfig) -> Result<CliResult, Box<dyn st
             Ok(r) => Ok(r),
             Err(e) => Err(e),
         },
-        CliCommand::FaucetRequest { token_mint } => match request_faucet(config, &token_mint).await
+        CliCommand::FaucetRequest { token_mint } => match request_faucet(config, token_mint).await
         {
             Ok(r) => Ok(r),
             Err(e) => Err(Box::new(CliError::ClientError(e))),

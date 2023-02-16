@@ -203,10 +203,7 @@ impl FuturesSubCommands for App<'_, '_> {
 pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("orders", Some(matches)) => {
-            let pubkey = match matches.value_of("pubkey") {
-                Some(a) => Some(Pubkey::from_str(a).unwrap()),
-                None => None,
-            };
+            let pubkey = matches.value_of("pubkey").map(|a| Pubkey::from_str(a).unwrap());
             Ok(CliCommand::Futures(FuturesSubCommand::Orders { pubkey }))
         }
         ("cancel", Some(matches)) => {
@@ -226,7 +223,7 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid Order ID: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -338,7 +335,7 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid order size.: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -390,7 +387,7 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid order size: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -408,7 +405,7 @@ pub fn parse_futures_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn
                     Err(e) => {
                         return Err(Box::new(CliError::BadParameters(format!(
                             "Invalid price: {}",
-                            e.to_string()
+                            e
                         ))));
                     }
                 },
@@ -703,7 +700,7 @@ pub async fn process_futures_cancel_order(
         args,
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -758,7 +755,7 @@ pub async fn process_futures_market_order(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
 
@@ -774,7 +771,7 @@ pub async fn process_futures_market_order(
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
     let _orders_account_state = match get_or_create_orders_account(
-        &rpc_client,
+        rpc_client,
         keypair,
         &master_account,
         &market.address,
@@ -884,7 +881,7 @@ pub async fn process_futures_market_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -998,7 +995,7 @@ pub async fn process_futures_close(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
 
@@ -1014,7 +1011,7 @@ pub async fn process_futures_close(
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
     let _orders_account_state = match get_or_create_orders_account(
-        &rpc_client,
+        rpc_client,
         keypair,
         &master_account,
         &market.address,
@@ -1092,7 +1089,7 @@ pub async fn process_futures_close(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -1172,7 +1169,7 @@ pub async fn process_futures_limit_order(
     let (sub_account, _) = derive_sub_account_address(&master_account, 0); // TODO: change this, allow multiple accounts
     let (orders_account, _) = derive_orders_account_address(&market.address, &master_account);
 
-    let account = get_cypher_zero_copy_account::<CypherAccount>(&rpc_client, &master_account)
+    let account = get_cypher_zero_copy_account::<CypherAccount>(rpc_client, &master_account)
         .await
         .unwrap();
     let sub_accounts = account
@@ -1187,7 +1184,7 @@ pub async fn process_futures_limit_order(
     let (quote_pool_node, _) = derive_pool_node_address(&quote_pool, 0); // TODO: change this
 
     let _orders_account_state = match get_or_create_orders_account(
-        &rpc_client,
+        rpc_client,
         keypair,
         &master_account,
         &market.address,
@@ -1286,7 +1283,7 @@ pub async fn process_futures_limit_order(
         ),
     ];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,
@@ -1351,7 +1348,7 @@ pub async fn process_futures_settle_funds(
         &keypair.pubkey(),
     )];
 
-    let sig = match send_transactions(&rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
+    let sig = match send_transactions(rpc_client, ixs, keypair, true, Some((1_400_000, 1)), None)
         .await
     {
         Ok(s) => s,

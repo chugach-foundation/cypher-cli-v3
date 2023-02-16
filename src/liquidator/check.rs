@@ -83,30 +83,28 @@ pub fn check_collateral(
             if sub_account_ctx.state.margining_type == SubAccountMargining::Cross {
                 // let's check if the user has unsettled funds or open orders which would increase the c-ratio
                 for position in sub_account_ctx.state.positions.iter() {
-                    if position.spot.token_mint != Pubkey::default() {
-                        if position.spot.open_orders_cache.coin_total != 0
-                            || position.spot.open_orders_cache.pc_total != 0
-                        {
-                            positions_info.push(PositionInfo {
-                                position_type: PositionType::Spot,
-                                identifier: position.spot.token_mint,
-                                account: liqee_ctx.account_ctx.address,
-                                sub_account: sub_account_ctx.address,
-                            });
-                        }
+                    if position.spot.token_mint != Pubkey::default()
+                        && (position.spot.open_orders_cache.coin_total != 0
+                            || position.spot.open_orders_cache.pc_total != 0)
+                    {
+                        positions_info.push(PositionInfo {
+                            position_type: PositionType::Spot,
+                            identifier: position.spot.token_mint,
+                            account: liqee_ctx.account_ctx.address,
+                            sub_account: sub_account_ctx.address,
+                        });
                     }
 
-                    if position.derivative.market != Pubkey::default() {
-                        if position.derivative.open_orders_cache.coin_total != 0
-                            || position.derivative.open_orders_cache.pc_total != 0
-                        {
-                            positions_info.push(PositionInfo {
-                                position_type: PositionType::Derivative,
-                                identifier: position.derivative.market,
-                                account: liqee_ctx.account_ctx.address,
-                                sub_account: sub_account_ctx.address,
-                            });
-                        }
+                    if position.derivative.market != Pubkey::default()
+                        && (position.derivative.open_orders_cache.coin_total != 0
+                            || position.derivative.open_orders_cache.pc_total != 0)
+                    {
+                        positions_info.push(PositionInfo {
+                            position_type: PositionType::Derivative,
+                            identifier: position.derivative.market,
+                            account: liqee_ctx.account_ctx.address,
+                            sub_account: sub_account_ctx.address,
+                        });
                     }
                 }
             }
@@ -128,7 +126,7 @@ pub fn check_collateral(
                 sub_account_ctx.state.authority
             );
             let margin_c_ratio = sub_account_ctx.state.get_margin_c_ratio(
-                &cache_ctx.state.as_ref(),
+                cache_ctx.state.as_ref(),
                 MarginCollateralRatioType::Maintenance,
             );
             if margin_c_ratio < margin_maint_ratio {
@@ -140,30 +138,28 @@ pub fn check_collateral(
 
                 // let's check if the user has unsettled funds or open orders which would increase the c-ratio
                 for position in sub_account_ctx.state.positions.iter() {
-                    if position.spot.token_mint != Pubkey::default() {
-                        if position.spot.open_orders_cache.coin_total != 0
-                            || position.spot.open_orders_cache.pc_total != 0
-                        {
-                            positions_info.push(PositionInfo {
-                                position_type: PositionType::Spot,
-                                identifier: position.spot.token_mint,
-                                account: liqee_ctx.account_ctx.address,
-                                sub_account: sub_account_ctx.address,
-                            });
-                        }
+                    if position.spot.token_mint != Pubkey::default()
+                        && (position.spot.open_orders_cache.coin_total != 0
+                            || position.spot.open_orders_cache.pc_total != 0)
+                    {
+                        positions_info.push(PositionInfo {
+                            position_type: PositionType::Spot,
+                            identifier: position.spot.token_mint,
+                            account: liqee_ctx.account_ctx.address,
+                            sub_account: sub_account_ctx.address,
+                        });
                     }
 
-                    if position.derivative.market != Pubkey::default() {
-                        if position.derivative.open_orders_cache.coin_total != 0
-                            || position.derivative.open_orders_cache.pc_total != 0
-                        {
-                            positions_info.push(PositionInfo {
-                                position_type: PositionType::Derivative,
-                                identifier: position.derivative.market,
-                                account: liqee_ctx.account_ctx.address,
-                                sub_account: sub_account_ctx.address,
-                            });
-                        }
+                    if position.derivative.market != Pubkey::default()
+                        && (position.derivative.open_orders_cache.coin_total != 0
+                            || position.derivative.open_orders_cache.pc_total != 0)
+                    {
+                        positions_info.push(PositionInfo {
+                            position_type: PositionType::Derivative,
+                            identifier: position.derivative.market,
+                            account: liqee_ctx.account_ctx.address,
+                            sub_account: sub_account_ctx.address,
+                        });
                     }
                 }
 
@@ -172,16 +168,15 @@ pub fn check_collateral(
                         sub_account: sub_account_ctx.address,
                     },
                     positions_info,
-                    ..Default::default()
                 };
             }
         }
     }
 
-    return LiquidationCheck {
+    LiquidationCheck {
         liquidation_type: LiquidationType::None,
         ..Default::default()
-    };
+    }
 }
 
 // todo: there's many things that can be changed here

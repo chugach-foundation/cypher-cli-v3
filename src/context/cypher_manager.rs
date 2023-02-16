@@ -86,9 +86,7 @@ impl ContextManager for CypherExecutionContextManager {
         self.shutdown_sender.subscribe()
     }
 
-    async fn send(&self) -> Result<(), ContextManagerError> {
-        let operation_context = self.operation_context.read().await;
-        let global_context = self.global_context.read().await;
+    async fn send(&self) -> Result<usize, ContextManagerError> {
         let oracle_info = self.oracle_info.read().await;
 
         // sanity checks
@@ -99,8 +97,10 @@ impl ContextManager for CypherExecutionContextManager {
                 "[{}] Oracle price unset - Awaiting to send execution context..",
                 self.symbol
             );
-            return Ok(());
+            return Ok(0);
         }
+
+        let global_context = self.global_context.read().await;
 
         // 2. account context exist
         if global_context.user.account_ctx.state.authority == Pubkey::default() {
@@ -108,8 +108,10 @@ impl ContextManager for CypherExecutionContextManager {
                 "[{}] User account unset - Awaiting to send execution context..",
                 self.symbol
             );
-            return Ok(());
+            return Ok(0);
         }
+
+        let operation_context = self.operation_context.read().await;
 
         // 3. sub accounts have been loaded
         if global_context.user.sub_account_ctxs.is_empty() {
@@ -117,7 +119,7 @@ impl ContextManager for CypherExecutionContextManager {
                 "[{}] User sub accounts unset - Awaiting to send execution context..",
                 self.symbol
             );
-            return Ok(());
+            return Ok(0);
         }
 
         info!("[{}] Sending execution context update..", self.symbol);
@@ -127,7 +129,7 @@ impl ContextManager for CypherExecutionContextManager {
             global: global_context.clone(),
             oracle_info: oracle_info.clone(),
         }) {
-            Ok(_) => Ok(()),
+            Ok(r) => Ok(r),
             Err(e) => Err(ContextManagerError::SendError(e)),
         }
     }

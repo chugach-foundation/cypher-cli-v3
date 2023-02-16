@@ -50,14 +50,8 @@ impl RandomSubCommands for App<'_, '_> {
 pub fn parse_random_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn error::Error>> {
     match matches.subcommand() {
         ("run", Some(matches)) => {
-            let output_keypair = match matches.value_of("output-keypair") {
-                Some(s) => Some(s.to_string()),
-                None => None,
-            };
-            let input_keypair = match matches.value_of("input-keypair") {
-                Some(s) => Some(s.to_string()),
-                None => None,
-            };
+            let output_keypair = matches.value_of("output-keypair").map(|s| s.to_string());
+            let input_keypair = matches.value_of("input-keypair").map(|s| s.to_string());
             let interval = match matches.value_of("interval") {
                 Some(i) => u64::from_str(i).unwrap(),
                 None => DEFAULT_INTERVAL,
@@ -103,7 +97,7 @@ pub async fn process_random_command(
             output_filename
         );
 
-        write_keypair(&keypair, &output_filename)?;
+        write_keypair(&keypair, output_filename)?;
     }
 
     info!("Setting up components from config..");

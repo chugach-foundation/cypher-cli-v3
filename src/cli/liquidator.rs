@@ -105,7 +105,7 @@ pub async fn process_liquidator_command(
             Ok(ui) => ui,
             Err(e) => {
                 warn!("There was an error getting user info: {:?}", e);
-                return Err(Box::new(CliError::Liquidator(Error::ClientError(e))));
+                return Err(Box::new(CliError::Liquidator(Error::Client(e))));
             }
         };
 
@@ -115,8 +115,8 @@ pub async fn process_liquidator_command(
         Arc::new(GlobalContextBuilder::new(
             accounts_cache.clone(),
             shutdown_sender.clone(),
-            user_info.master_account.clone(),
-            user_info.sub_account.clone(),
+            user_info.master_account,
+            user_info.sub_account,
         ));
 
     // at this point we have prepared everything we need
