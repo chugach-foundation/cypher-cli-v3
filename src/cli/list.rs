@@ -59,6 +59,7 @@ pub fn parse_list_command(matches: &ArgMatches) -> Result<CliCommand, Box<dyn er
     }
 }
 
+#[allow(clippy::to_string_in_format_args)]
 pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
@@ -117,6 +118,7 @@ pub async fn list_futures_markets(config: &CliConfig) -> Result<CliResult, Box<d
     Ok(CliResult {})
 }
 
+#[allow(clippy::to_string_in_format_args)]
 pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
@@ -163,6 +165,7 @@ pub async fn list_perp_markets(config: &CliConfig) -> Result<CliResult, Box<dyn 
     Ok(CliResult {})
 }
 
+#[allow(clippy::to_string_in_format_args)]
 pub async fn list_pools(config: &CliConfig) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
 

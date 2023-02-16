@@ -105,6 +105,7 @@ pub async fn request_faucet(config: &CliConfig, mint: &Pubkey) -> Result<CliResu
     Ok(CliResult {})
 }
 
+#[allow(clippy::to_string_in_format_args)]
 pub async fn list_faucets(config: &CliConfig) -> Result<CliResult, Box<dyn error::Error>> {
     let rpc_client = config.rpc_client.as_ref().unwrap();
 
