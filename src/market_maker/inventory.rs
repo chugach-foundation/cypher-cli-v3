@@ -4,6 +4,7 @@ use {fixed::types::I80F48, log::info, solana_sdk::pubkey::Pubkey};
 use crate::common::{
     context::GlobalContext,
     inventory::{InventoryManager, QuoteVolumes, SpreadInfo},
+    Identifier,
 };
 
 pub struct ShapeFunctionInventoryManager {
@@ -15,6 +16,7 @@ pub struct ShapeFunctionInventoryManager {
     spread: I80F48,
     market_identifier: Pubkey,
     is_derivative: bool,
+    symbol: String,
 }
 
 impl ShapeFunctionInventoryManager {
@@ -28,6 +30,7 @@ impl ShapeFunctionInventoryManager {
         shape_num: I80F48,
         shape_denom: I80F48,
         spread: I80F48,
+        symbol: String,
     ) -> Self {
         Self {
             market_identifier,
@@ -38,11 +41,21 @@ impl ShapeFunctionInventoryManager {
             shape_num,
             shape_denom,
             spread,
+            symbol,
         }
     }
 }
 
-impl InventoryManager for ShapeFunctionInventoryManager {
+impl Identifier for ShapeFunctionInventoryManager {
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+}
+
+impl InventoryManager for ShapeFunctionInventoryManager
+where
+    ShapeFunctionInventoryManager: Identifier,
+{
     type Input = GlobalContext;
 
     fn get_delta(&self, ctx: &GlobalContext) -> I80F48 {
@@ -64,8 +77,6 @@ impl InventoryManager for ShapeFunctionInventoryManager {
             }
             None => I80F48::ZERO,
         };
-
-        info!("Current delta: {}", delta);
 
         delta
     }
@@ -89,21 +100,25 @@ impl InventoryManager for ShapeFunctionInventoryManager {
         } else {
             (adjusted_vol, self.max_quote)
         };
-        QuoteVolumes {
+        let res = QuoteVolumes {
             delta: current_delta,
             bid_size,
             ask_size,
-        }
+        };
+        info!("[{}] Quote Volumes: {:?}", self.symbol(), res);
+        res
     }
 
     fn get_spread(&self, oracle_price: I80F48) -> SpreadInfo {
         let ask = oracle_price.checked_mul(self.spread).unwrap();
         let bid = oracle_price.checked_div(self.spread).unwrap();
 
-        SpreadInfo {
+        let res = SpreadInfo {
             oracle_price,
             bid,
             ask,
-        }
+        };
+        info!("[{}] Quote Volumes: {:?}", self.symbol(), res);
+        res
     }
 }

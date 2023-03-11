@@ -11,6 +11,7 @@ use log::{info, warn};
 use solana_client::{
     client_error::ClientError, nonblocking::rpc_client::RpcClient, rpc_filter::RpcFilterType,
 };
+use solana_sdk::{account::Account, commitment_config::CommitmentConfig};
 
 use std::{
     sync::Arc,
@@ -27,8 +28,10 @@ pub struct CypherAccountsService {
     pub shutdown_sender: Arc<Sender<bool>>,
     /// map from authority to user context
     pub users_map: DashMap<Pubkey, UserContext>,
-    pub accounts_map: DashMap<Pubkey, bool>,
-    pub sub_accounts_map: DashMap<Pubkey, bool>,
+    pub all_accounts_map: DashMap<Pubkey, bool>,
+    pub all_sub_accounts_map: DashMap<Pubkey, bool>,
+    pub subscribed_accounts_map: DashMap<Pubkey, bool>,
+    pub subscribed_sub_accounts_map: DashMap<Pubkey, bool>,
     pub update_sender: Arc<Sender<UserContext>>,
 }
 
@@ -45,8 +48,10 @@ impl CypherAccountsService {
             accounts_cache,
             shutdown_sender,
             users_map: DashMap::new(),
-            accounts_map: DashMap::new(),
-            sub_accounts_map: DashMap::new(),
+            all_accounts_map: DashMap::new(),
+            all_sub_accounts_map: DashMap::new(),
+            subscribed_accounts_map: DashMap::new(),
+            subscribed_sub_accounts_map: DashMap::new(),
             update_sender: Arc::new(channel::<UserContext>(u16::MAX as usize).0),
         }
     }
@@ -126,7 +131,7 @@ impl CypherAccountsService {
         self: &Arc<Self>,
         account_state: &AccountState,
     ) -> Result<UserContext, Error> {
-        if self.accounts_map.contains_key(&account_state.account) {
+        if self.all_accounts_map.contains_key(&account_state.account) {
             let account = get_zero_copy_account::<CypherAccount>(&account_state.data);
 
             let user_ctx = match self.users_map.get_mut(&account.authority) {
@@ -152,7 +157,10 @@ impl CypherAccountsService {
             return Ok(user_ctx);
         }
 
-        if self.sub_accounts_map.contains_key(&account_state.account) {
+        if self
+            .all_sub_accounts_map
+            .contains_key(&account_state.account)
+        {
             let sub_account = get_zero_copy_account::<CypherSubAccount>(&account_state.data);
 
             let user_ctx = match self.users_map.get_mut(&sub_account.authority) {
@@ -206,10 +214,10 @@ impl CypherAccountsService {
         let mut account_keys = Vec::new();
 
         for (account_key, _) in accounts.iter() {
-            if !self.accounts_map.contains_key(account_key) {
+            if !self.all_accounts_map.contains_key(account_key) {
                 info!("Adding subscription for account: {}", account_key);
                 account_keys.push(*account_key);
-                self.accounts_map.insert(*account_key, true);
+                self.all_accounts_map.insert(*account_key, true);
             }
         }
 
@@ -237,10 +245,10 @@ impl CypherAccountsService {
         let mut sub_account_keys = Vec::new();
 
         for (account_key, _) in sub_accounts.iter() {
-            if !self.sub_accounts_map.contains_key(account_key) {
+            if !self.all_sub_accounts_map.contains_key(account_key) {
                 info!("Adding subscription for account: {}", account_key);
                 sub_account_keys.push(*account_key);
-                self.sub_accounts_map.insert(*account_key, true);
+                self.all_sub_accounts_map.insert(*account_key, true);
             }
         }
 
@@ -249,10 +257,114 @@ impl CypherAccountsService {
             sub_account_keys.len()
         );
 
+        let user_ctxs = match self
+            .get_multiple_accounts_repeat(&account_keys, &sub_account_keys)
+            .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                return Err(e);
+            }
+        };
+
         self.streaming_accounts
             .add_subscriptions(&[account_keys, sub_account_keys].concat())
             .await;
 
         Ok(())
+    }
+
+    async fn get_multiple_accounts_repeat(
+        self: &Arc<Self>,
+        account_keys: &[Pubkey],
+        sub_account_keys: &[Pubkey],
+    ) -> Result<Vec<UserContext>, ClientError> {
+        let mut sub_account_ctxs = Vec::new();
+
+        for i in (0..sub_account_keys.len()).step_by(100) {
+            let mut pubkeys: Vec<Pubkey> = Vec::new();
+            pubkeys.extend(sub_account_keys[i..sub_account_keys.len().min(i + 100)].iter());
+
+            let accounts_res = self.get_multiple_accounts(&pubkeys).await;
+            let accounts = match accounts_res {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!("Could not fetch cypher sub accounts: {}", e);
+                    return Err(e);
+                }
+            };
+
+            info!("Fetched {} cypher accounts.", accounts.len());
+
+            for (idx, maybe_account) in accounts.iter().enumerate() {
+                if let Some(account) = maybe_account {
+                    let sub_account_state =
+                        get_zero_copy_account::<CypherSubAccount>(&account.data);
+                    let sub_account_ctx =
+                        SubAccountContext::new(sub_account_keys[idx], sub_account_state);
+                    sub_account_ctxs.push(sub_account_ctx);
+                }
+            }
+        }
+
+        let mut user_ctxs = Vec::new();
+
+        for i in (0..account_keys.len()).step_by(100) {
+            let mut pubkeys: Vec<Pubkey> = Vec::new();
+            pubkeys.extend(account_keys[i..account_keys.len().min(i + 100)].iter());
+
+            let accounts_res = self.get_multiple_accounts(&pubkeys).await;
+            let accounts = match accounts_res {
+                Ok(a) => a,
+                Err(e) => {
+                    warn!("Could not fetch cypher accounts: {}", e.to_string());
+                    return Err(e);
+                }
+            };
+
+            info!("Fetched {} cypher accounts.", accounts.len());
+
+            for (idx, maybe_account) in accounts.iter().enumerate() {
+                if let Some(account) = maybe_account {
+                    let account_state = get_zero_copy_account::<CypherAccount>(&account.data);
+                    let sub_account_pubkeys = account_state
+                        .sub_account_caches
+                        .iter()
+                        .filter(|sa| sa.sub_account != Pubkey::default())
+                        .map(|sac| sac.sub_account)
+                        .collect::<Vec<_>>();
+                    let authority = account_state.authority.clone();
+                    let account_ctx = AccountContext::new(account_keys[idx], account_state);
+                    let filtered_sub_accounts_ctxs = sub_account_ctxs
+                        .iter()
+                        .filter(|sa| sub_account_pubkeys.contains(&sa.address))
+                        .map(|sa| sa.clone())
+                        .collect::<Vec<_>>();
+                    let user_ctx =
+                        UserContext::new(authority, account_ctx, filtered_sub_accounts_ctxs);
+                    user_ctxs.push(user_ctx);
+                }
+            }
+        }
+        Ok(user_ctxs)
+    }
+
+    async fn get_multiple_accounts(
+        self: &Arc<Self>,
+        pubkeys: &[Pubkey],
+    ) -> Result<Vec<Option<Account>>, ClientError> {
+        let accounts_res = self
+            .rpc_client
+            .get_multiple_accounts_with_commitment(pubkeys, CommitmentConfig::confirmed())
+            .await;
+
+        let accounts = match accounts_res {
+            Ok(a) => a.value,
+            Err(e) => {
+                warn!("Could not fetch account: {:?}", e);
+                return Err(e);
+            }
+        };
+        Ok(accounts)
     }
 }

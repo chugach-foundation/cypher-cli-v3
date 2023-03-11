@@ -22,14 +22,13 @@ use crate::{
             builder::ContextBuilder, manager::ContextManager, ContextInfo, ExecutionContext,
             GlobalContext, OperationContext,
         },
-        hedger::HedgerPulseResult,
+        hedger::Hedger,
         info::{
             Accounts, FuturesMarketInfo, MarketMetadata, PerpMarketInfo, SpotMarketInfo, UserInfo,
         },
         inventory::InventoryManager,
         maker::Maker,
         oracle::{OracleInfo, OracleProvider},
-        strategy::Strategy,
     },
     config::{Config, ConfigError},
     context::{
@@ -293,27 +292,19 @@ pub async fn get_context_info(
     Ok(ctx_info)
 }
 
-/// Gets the appropriate [`Maker`] for the given config.
-pub async fn get_maker_from_config(
-    rpc_client: &Arc<RpcClient>,
-    shutdown_sender: Arc<Sender<bool>>,
-    context_sender: Arc<Sender<ExecutionContext>>,
+/// Gets the appropriate [`InventoryManager`] for the given config.
+pub async fn get_inventory_manager_from_config(
     cypher_ctx: &CypherContext,
     context_info: &ContextInfo,
     config: &Config<MarketMakerConfig>,
-) -> Result<
-    Arc<dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send>,
-    Error,
-> {
-    info!("Preparing Maker for {}.", context_info.symbol);
+) -> Result<Arc<dyn InventoryManager<Input = GlobalContext> + Send>, Error> {
+    info!("Preparing Inventory Manager for {}..", context_info.symbol);
 
     info!(
-        "Inventory management - Max quote: {} - Target Spread: {} bps - Layers: {} - Spacing: {} bps",
-        config.inner.maker_config.max_quote,
-        config.inner.maker_config.spread,
-        config.inner.maker_config.layers,
-        config.inner.maker_config.spacing_bps
+        "Inventory Manager Config: {:?}",
+        config.inner.inventory_config
     );
+
     let decimals = get_decimals_for_symbol(cypher_ctx, context_info.symbol.as_str()).await?;
 
     let market_identifier = match &context_info.context_accounts {
@@ -328,7 +319,7 @@ pub async fn get_maker_from_config(
         Accounts::Spot(_) => false,
     };
 
-    let inventory_mngr: Arc<dyn InventoryManager<Input = GlobalContext>> =
+    let inventory_mngr: Arc<dyn InventoryManager<Input = GlobalContext> + Send> =
         Arc::new(ShapeFunctionInventoryManager::new(
             market_identifier,
             is_derivative,
@@ -341,7 +332,27 @@ pub async fn get_maker_from_config(
                 .checked_add(I80F48::from(config.inner.maker_config.spread))
                 .and_then(|n| n.checked_div(I80F48::from(BPS_UNIT)))
                 .unwrap(),
+            context_info.symbol.to_string(),
         ));
+
+    Ok(inventory_mngr)
+}
+
+/// Gets the appropriate [`Maker`] for the given config.
+pub async fn get_maker_from_config(
+    rpc_client: &Arc<RpcClient>,
+    shutdown_sender: Arc<Sender<bool>>,
+    context_sender: Arc<Sender<ExecutionContext>>,
+    inventory_manager: Arc<dyn InventoryManager<Input = GlobalContext>>,
+    context_info: &ContextInfo,
+    config: &Config<MarketMakerConfig>,
+) -> Result<
+    Arc<dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send>,
+    Error,
+> {
+    info!("Preparing Maker for {}..", context_info.symbol);
+
+    info!("Maker Config: {:?}", config.inner.maker_config);
 
     let maker: Arc<
         dyn Maker<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send,
@@ -349,7 +360,7 @@ pub async fn get_maker_from_config(
         Accounts::Futures(f) => Arc::new(FuturesMaker::new(
             rpc_client.clone(),
             context_info.user_accounts.signer.clone(),
-            inventory_mngr,
+            inventory_manager,
             shutdown_sender.clone(),
             context_sender.clone(),
             context_info.user_accounts.clone(),
@@ -363,7 +374,7 @@ pub async fn get_maker_from_config(
         Accounts::Perpetuals(p) => Arc::new(PerpsMaker::new(
             rpc_client.clone(),
             context_info.user_accounts.signer.clone(),
-            inventory_mngr,
+            inventory_manager,
             shutdown_sender.clone(),
             context_sender.clone(),
             context_info.user_accounts.clone(),
@@ -377,7 +388,7 @@ pub async fn get_maker_from_config(
         Accounts::Spot(s) => Arc::new(SpotMaker::new(
             rpc_client.clone(),
             context_info.user_accounts.signer.clone(),
-            inventory_mngr,
+            inventory_manager,
             shutdown_sender.clone(),
             context_sender.clone(),
             context_info.user_accounts.clone(),
@@ -395,16 +406,55 @@ pub async fn get_maker_from_config(
 
 /// Gets the appropriate [`Hedger`] for the given config.
 pub fn get_hedger_from_config(
+    rpc_client: &Arc<RpcClient>,
+    shutdown_sender: Arc<Sender<bool>>,
+    context_sender: Arc<Sender<ExecutionContext>>,
+    inventory_manager: Arc<dyn InventoryManager<Input = GlobalContext>>,
     context_info: &ContextInfo,
-) -> Result<Arc<dyn Strategy<Input = ExecutionContext, Output = HedgerPulseResult>>, Error> {
-    info!("Preparing Hedger for {}", context_info.symbol);
+    config: &Config<MarketMakerConfig>,
+) -> Result<Arc<dyn Hedger<Input = ExecutionContext, InventoryManagerInput = GlobalContext>>, Error>
+{
+    info!("Preparing Hedger for {}..", context_info.symbol);
 
-    let hedger: Arc<dyn Strategy<Input = ExecutionContext, Output = HedgerPulseResult>> =
-        match &context_info.context_accounts {
-            Accounts::Futures(_f) => Arc::new(FuturesHedger::new(context_info.symbol.to_string())),
-            Accounts::Perpetuals(_p) => Arc::new(PerpsHedger::new(context_info.symbol.to_string())),
-            Accounts::Spot(_s) => Arc::new(SpotHedger::new(context_info.symbol.to_string())),
-        };
+    info!("Hedger Config: {:?}", config.inner.hedger_config);
+
+    let hedger: Arc<
+        dyn Hedger<Input = ExecutionContext, InventoryManagerInput = GlobalContext> + Send,
+    > = match &context_info.context_accounts {
+        Accounts::Futures(f) => Arc::new(FuturesHedger::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
+            inventory_manager,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            context_info.user_accounts.clone(),
+            f.clone(),
+            context_info.market_metadata.clone(),
+            context_info.symbol.to_string(),
+        )),
+        Accounts::Perpetuals(p) => Arc::new(PerpsHedger::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
+            inventory_manager,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            context_info.user_accounts.clone(),
+            p.clone(),
+            context_info.market_metadata.clone(),
+            context_info.symbol.to_string(),
+        )),
+        Accounts::Spot(s) => Arc::new(SpotHedger::new(
+            rpc_client.clone(),
+            context_info.user_accounts.signer.clone(),
+            inventory_manager,
+            shutdown_sender.clone(),
+            context_sender.clone(),
+            context_info.user_accounts.clone(),
+            s.clone(),
+            context_info.market_metadata.clone(),
+            context_info.symbol.to_string(),
+        )),
+    };
 
     Ok(hedger)
 }
@@ -468,8 +518,7 @@ pub async fn get_context_builder(
 
 /// Gets the appropriate [`ContextManager`] for the given config.
 pub fn get_context_manager_from_config(
-    _ctx: &CypherContext,
-    config: &Config<MarketMakerConfig>,
+    context_info: &ContextInfo,
     shutdown_sender: Arc<Sender<bool>>,
     global_context_builder: Arc<dyn ContextBuilder<Output = GlobalContext> + Send>,
     operation_context_builder: Arc<dyn ContextBuilder<Output = OperationContext> + Send>,
@@ -485,8 +534,7 @@ pub fn get_context_manager_from_config(
     >,
     Error,
 > {
-    let symbol = &config.inner.hedger_config.symbol;
-    info!("Preparing Context Manager for {}", symbol);
+    info!("Preparing Context Manager for {}..", context_info.symbol);
 
     let context_manager: Arc<
         dyn ContextManager<

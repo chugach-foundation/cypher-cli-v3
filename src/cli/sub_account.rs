@@ -1100,6 +1100,10 @@ pub async fn peek_sub_account(
         init_c_ratio,
     );
 
+    drop(pools);
+    drop(futures_markets);
+    drop(perp_markets);
+
     match list_spot_open_orders(config, Some(sub_account.master_account)).await {
         Ok(_) => (),
         Err(e) => {

@@ -11,6 +11,7 @@ use crate::common::{
         DecentralizedExchangeSource, OracleInfo, OracleInfoSource, OracleProvider,
         OracleProviderError,
     },
+    Identifier,
 };
 
 pub struct CypherOracleProvider {
@@ -38,6 +39,12 @@ impl CypherOracleProvider {
     }
 }
 
+impl Identifier for CypherOracleProvider {
+    fn symbol(&self) -> &str {
+        &self.symbol
+    }
+}
+
 impl OracleProvider for CypherOracleProvider {
     type Input = GlobalContext;
 
@@ -54,14 +61,7 @@ impl OracleProvider for CypherOracleProvider {
 
         let cache = cache_ctx.state.get_price_cache(self.cache_index);
 
-        info!(
-            "[{}] - Oracle price from cache at index {}: {}",
-            self.symbol,
-            self.cache_index,
-            cache.oracle_price()
-        );
-
-        Ok(OracleInfo {
+        let res = OracleInfo {
             symbol: self.symbol.to_string(),
             source: OracleInfoSource::Dex(DecentralizedExchangeSource::Cypher),
             price: cache.oracle_price(),
@@ -69,7 +69,11 @@ impl OracleProvider for CypherOracleProvider {
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
                 .as_millis(),
-        })
+        };
+
+        info!("[{}] Oracle Info: {:?}", self.symbol(), res);
+
+        Ok(res)
     }
 
     fn output_sender(&self) -> Arc<Sender<OracleInfo>> {
@@ -78,9 +82,5 @@ impl OracleProvider for CypherOracleProvider {
 
     fn subscribe(&self) -> Receiver<OracleInfo> {
         self.output_sender.subscribe()
-    }
-
-    fn symbol(&self) -> &str {
-        self.symbol.as_str()
     }
 }

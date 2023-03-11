@@ -23,7 +23,8 @@ use crate::{
     market_maker::{
         config::{
             get_context_builder, get_context_info, get_context_manager_from_config,
-            get_hedger_from_config, get_maker_from_config, get_oracle_provider, MarketMakerConfig,
+            get_hedger_from_config, get_inventory_manager_from_config, get_maker_from_config,
+            get_oracle_provider, MarketMakerConfig,
         },
         error::Error,
     },
@@ -233,8 +234,7 @@ pub async fn process_market_maker_command(
             OracleInfoInput = OracleInfo,
         >,
     > = match get_context_manager_from_config(
-        &cypher_ctx,
-        &config,
+        &maker_context_info,
         shutdown_sender.clone(),
         global_context_builder.clone(),
         maker_context_builder.clone(),
@@ -249,6 +249,7 @@ pub async fn process_market_maker_command(
             return Err(Box::new(CliError::MarketMaker(e)));
         }
     };
+
     let hedger_context_manager: Arc<
         dyn ContextManager<
             Output = ExecutionContext,
@@ -257,8 +258,7 @@ pub async fn process_market_maker_command(
             OracleInfoInput = OracleInfo,
         >,
     > = match get_context_manager_from_config(
-        &cypher_ctx,
-        &config,
+        &hedger_context_info,
         shutdown_sender.clone(),
         global_context_builder.clone(),
         hedger_context_builder.clone(),
@@ -274,11 +274,23 @@ pub async fn process_market_maker_command(
         }
     };
 
+    let maker_inventory_manager =
+        match get_inventory_manager_from_config(&cypher_ctx, &maker_context_info, &config).await {
+            Ok(im) => im,
+            Err(e) => {
+                warn!(
+                    "There was an error preparing Maker Inventory Manager: {:?}",
+                    e
+                );
+                return Err(Box::new(CliError::MarketMaker(e)));
+            }
+        };
+
     let maker = match get_maker_from_config(
         rpc_client,
         shutdown_sender.clone(),
         maker_context_manager.sender(),
-        &cypher_ctx,
+        maker_inventory_manager.clone(),
         &maker_context_info,
         &config,
     )
@@ -290,7 +302,27 @@ pub async fn process_market_maker_command(
             return Err(Box::new(CliError::MarketMaker(e)));
         }
     };
-    let _hedger = match get_hedger_from_config(&hedger_context_info) {
+
+    let hedger_inventory_manager =
+        match get_inventory_manager_from_config(&cypher_ctx, &hedger_context_info, &config).await {
+            Ok(im) => im,
+            Err(e) => {
+                warn!(
+                    "There was an error preparing Hedger Inventory Manager: {:?}",
+                    e
+                );
+                return Err(Box::new(CliError::MarketMaker(e)));
+            }
+        };
+
+    let hedger = match get_hedger_from_config(
+        rpc_client,
+        shutdown_sender.clone(),
+        hedger_context_manager.sender(),
+        hedger_inventory_manager.clone(),
+        &hedger_context_info,
+        &config,
+    ) {
         Ok(m) => m,
         Err(e) => {
             warn!("There was an error preparing Hedger: {:?}", e);
@@ -304,7 +336,7 @@ pub async fn process_market_maker_command(
 
     // clone and spawn task for the maker oracle provider
     let maker_oracle_provider_clone = maker_oracle_provider.clone();
-    let _maker_oracle_provider_handle = tokio::spawn(async move {
+    let maker_oracle_provider_handle = tokio::spawn(async move {
         match maker_oracle_provider_clone.start().await {
             Ok(_) => (),
             Err(e) => {
@@ -315,7 +347,7 @@ pub async fn process_market_maker_command(
 
     // clone and spawn task for the hedger oracle provider
     let hedger_oracle_provider_clone = hedger_oracle_provider.clone();
-    let _hedger_oracle_provider_handle = tokio::spawn(async move {
+    let hedger_oracle_provider_handle = tokio::spawn(async move {
         match hedger_oracle_provider_clone.start().await {
             Ok(_) => (),
             Err(e) => {
@@ -391,6 +423,16 @@ pub async fn process_market_maker_command(
         }
     });
 
+    let hedger_clone = hedger.clone();
+    let hedger_handle = tokio::spawn(async move {
+        match hedger_clone.start().await {
+            Ok(_) => (),
+            Err(e) => {
+                warn!("There was an error running Hedger: {:?}", e);
+            }
+        }
+    });
+
     // only add the necessary subscriptions to the service so the initial account fetching propagates to all listeners
     let streaming_account_service = Arc::new(StreamingAccountInfoService::new(
         accounts_cache.clone(),
@@ -445,6 +487,22 @@ pub async fn process_market_maker_command(
         ),
     };
 
+    match maker_oracle_provider_handle.await {
+        Ok(_) => info!("Sucessfully waited for Maker Oracle Provider handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Maker Oracle Provider handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match hedger_oracle_provider_handle.await {
+        Ok(_) => info!("Sucessfully waited for Hedger Oracle Provider handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Hedger Oracle Provider handle. Error: {:?}",
+            e
+        ),
+    };
+
     match maker_ctx_builder_handle.await {
         Ok(_) => info!("Sucessfully waited for Maker Context Builder handle."),
         Err(e) => warn!(
@@ -481,6 +539,14 @@ pub async fn process_market_maker_command(
         Ok(_) => info!("Sucessfully waited for Maker handle."),
         Err(e) => warn!(
             "An error occurred while waiting for Maker handle. Error: {:?}",
+            e
+        ),
+    };
+
+    match hedger_handle.await {
+        Ok(_) => info!("Sucessfully waited for Hedger handle."),
+        Err(e) => warn!(
+            "An error occurred while waiting for Hedger handle. Error: {:?}",
             e
         ),
     };

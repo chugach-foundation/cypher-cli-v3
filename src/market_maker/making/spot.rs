@@ -23,8 +23,9 @@ use crate::common::context::{ExecutionContext, GlobalContext};
 use crate::common::info::{MarketMetadata, SpotMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
-
+use crate::common::order_manager::OrderManager;
 use crate::common::orders::{CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder};
+use crate::common::Identifier;
 
 pub struct SpotMaker {
     rpc_client: Arc<RpcClient>,
@@ -35,7 +36,6 @@ pub struct SpotMaker {
     inflight_orders: RwLock<Vec<ManagedOrder>>,
     inflight_cancels: RwLock<Vec<InflightCancel>>,
     client_order_id: RwLock<u64>,
-    context: RwLock<ExecutionContext>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<ExecutionContext>>,
     user_info: UserInfo,
@@ -81,52 +81,18 @@ impl SpotMaker {
             open_orders: RwLock::new(Vec::new()),
             inflight_orders: RwLock::new(Vec::new()),
             inflight_cancels: RwLock::new(Vec::new()),
-            context: RwLock::new(ExecutionContext::default()),
         }
     }
 }
 
+impl Identifier for SpotMaker {
+    fn symbol(&self) -> &str {
+        self.symbol.as_str()
+    }
+}
+
 #[async_trait]
-impl Maker for SpotMaker {
-    type Input = ExecutionContext;
-    type InventoryManagerInput = GlobalContext;
-
-    fn rpc_client(&self) -> Arc<RpcClient> {
-        self.rpc_client.clone()
-    }
-
-    fn signer(&self) -> Arc<Keypair> {
-        self.signer.clone()
-    }
-
-    fn order_layer_count(&self) -> usize {
-        self.order_layers
-    }
-
-    fn layer_spacing_bps(&self) -> u16 {
-        self.layer_spacing
-    }
-
-    fn time_in_force(&self) -> u64 {
-        60 // let's simply default to 60
-    }
-
-    fn context_receiver(&self) -> Receiver<ExecutionContext> {
-        self.context_sender.subscribe()
-    }
-
-    fn shutdown_receiver(&self) -> Receiver<bool> {
-        self.shutdown_sender.subscribe()
-    }
-
-    async fn context_reader(&self) -> RwLockReadGuard<ExecutionContext> {
-        self.context.read().await
-    }
-
-    async fn context_writer(&self) -> RwLockWriteGuard<ExecutionContext> {
-        self.context.write().await
-    }
-
+impl OrderManager for SpotMaker {
     async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>> {
         self.managed_orders.read().await
     }
@@ -158,30 +124,53 @@ impl Maker for SpotMaker {
     async fn inflight_cancels_writer(&self) -> RwLockWriteGuard<Vec<InflightCancel>> {
         self.inflight_cancels.write().await
     }
+}
 
-    async fn pulse(&self) -> Result<MakerPulseResult, MakerError> {
-        let ctx = self.context_reader().await;
+#[async_trait]
+impl Maker for SpotMaker
+where
+    SpotMaker: Identifier,
+{
+    type Input = ExecutionContext;
+    type InventoryManagerInput = GlobalContext;
+
+    fn rpc_client(&self) -> Arc<RpcClient> {
+        self.rpc_client.clone()
+    }
+
+    fn signer(&self) -> Arc<Keypair> {
+        self.signer.clone()
+    }
+
+    fn order_layer_count(&self) -> usize {
+        self.order_layers
+    }
+
+    fn layer_spacing_bps(&self) -> u16 {
+        self.layer_spacing
+    }
+
+    fn time_in_force(&self) -> u64 {
+        self.time_in_force
+    }
+
+    fn context_receiver(&self) -> Receiver<ExecutionContext> {
+        self.context_sender.subscribe()
+    }
+
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
+    }
+
+    async fn pulse(&self, input: &<Self as Maker>::Input) -> Result<MakerPulseResult, MakerError> {
         let inventory_mngr = self.inventory_manager();
 
-        info!(
-            "[{}] Oracle Source: {:?} - Price: {}",
-            self.symbol, ctx.oracle_info.source, ctx.oracle_info.price,
-        );
-
-        let spread_info = inventory_mngr.get_spread(ctx.oracle_info.price);
+        let spread_info = inventory_mngr.get_spread(input.oracle_info.price);
         if spread_info.oracle_price == I80F48::ZERO {
             return Ok(MakerPulseResult::default());
         }
-        info!(
-            "[{}] Mid Price: {} - Best Bid: {} - Best Ask: {}",
-            self.symbol, spread_info.oracle_price, spread_info.bid, spread_info.ask,
-        );
 
-        let quote_volumes = inventory_mngr.get_quote_volumes(&ctx.global);
-        info!(
-            "[{}] Current delta: {} - Volumes - Bid: {} - Ask: {}",
-            self.symbol, quote_volumes.delta, quote_volumes.bid_size, quote_volumes.ask_size,
-        );
+        let quote_volumes = inventory_mngr.get_quote_volumes(&input.global);
         if quote_volumes.bid_size == I80F48::ZERO && quote_volumes.ask_size == I80F48::ZERO {
             return Ok(MakerPulseResult::default());
         }
@@ -231,6 +220,14 @@ impl Maker for SpotMaker {
                 Side::Bid => &self.market_info.quote_vault_signer, // if the order is a bid, we need the quote vault signer
                 Side::Ask => &self.market_info.asset_vault_signer, // if the order is an ask, we need the base vault signer
             };
+            info!(
+                "[{}] Placing order. Limit Price: {} - Max Base Qty: {} - Max Quote Qty: {} - Client ID: {}",
+                self.symbol(),
+                limit_price,
+                max_coin_qty,
+                max_native_pc_qty_including_fees,
+                *client_order_id
+            );
             new_order_ixs.push(new_spot_order(
                 &self.user_info.clearing,
                 &cache_account::id(),
@@ -293,6 +290,12 @@ impl Maker for SpotMaker {
             } else {
                 order_cancel.order_id
             };
+            info!(
+                "[{}] Cancelling order. Is client ID: {} - ID: {}",
+                self.symbol(),
+                is_client_id,
+                order_id,
+            );
             cancel_order_ixs.push(cancel_spot_order(
                 &self.user_info.clearing,
                 &cache_account::id(),
@@ -320,9 +323,5 @@ impl Maker for SpotMaker {
             ))
         }
         cancel_order_ixs
-    }
-
-    fn symbol(&self) -> &str {
-        self.symbol.as_str()
     }
 }
