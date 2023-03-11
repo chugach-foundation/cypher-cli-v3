@@ -19,10 +19,11 @@ agnostic-orderbook = { git = "https://github.com/chugach-foundation/agnostic-ord
 anchor-lang = "0.26.0"
 anchor-spl = { version = "0.26.0", features = [ "token", "associated_token", "dex", ] }
 async-trait = "0.1.58"
+bytemuck = "1.4.0"
 chrono = "0.4.19"
 clap = "2.33.1"
-cypher-client = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }
-cypher-utils = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }
+cypher-client = { git = "https://github.com/chugach-foundation/cypher-client-v3.git", rev = "d359072" }
+cypher-utils = { git = "https://github.com/chugach-foundation/cypher-client-v3.git", rev = "d359072"}
 dashmap = "5.3.4"
 env_logger = "0.9.3"
 faucet-client = { git = "https://github.com/chugach-foundation/cypher-client-v3.git" }

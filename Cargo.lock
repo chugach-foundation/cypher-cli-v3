@@ -1025,6 +1025,7 @@ dependencies = [
  "anchor-lang",
  "anchor-spl",
  "async-trait",
+ "bytemuck",
  "chrono",
  "clap 2.34.0",
  "cypher-client",
@@ -1056,7 +1057,7 @@ dependencies = [
 [[package]]
 name = "cypher-client"
 version = "3.0.0"
-source = "git+https://github.com/chugach-foundation/cypher-client-v3.git#84ed993fefdfcc2f1960ff7e0d54549395540d3a"
+source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?rev=d359072#d359072dc31ccd16f01e536e050cc12450236d5d"
 dependencies = [
  "agnostic-orderbook",
  "anchor-gen",
@@ -1074,7 +1075,7 @@ dependencies = [
 [[package]]
 name = "cypher-utils"
 version = "3.0.0"
-source = "git+https://github.com/chugach-foundation/cypher-client-v3.git#84ed993fefdfcc2f1960ff7e0d54549395540d3a"
+source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?rev=d359072#d359072dc31ccd16f01e536e050cc12450236d5d"
 dependencies = [
  "agnostic-orderbook",
  "anchor-lang",
