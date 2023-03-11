@@ -1,3 +1,4 @@
+use anchor_lang::AnchorSerialize;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
     cache_account,
@@ -497,7 +498,7 @@ pub async fn list_perps_open_orders(
         RpcFilterType::DataSize(8 + std::mem::size_of::<OrdersAccount>() as u64),
         RpcFilterType::Memcmp(Memcmp {
             offset: 8 + 8, // offset for authority pubkey on cypher's orders accounts, includes anchor discriminator
-            bytes: MemcmpEncodedBytes::Base58(authority.to_string()),
+            bytes: MemcmpEncodedBytes::Bytes(authority.try_to_vec()?),
             encoding: None,
         }),
     ];

@@ -20,8 +20,9 @@ use crate::common::context::{ExecutionContext, GlobalContext};
 use crate::common::info::{MarketMetadata, PerpMarketInfo, UserInfo};
 use crate::common::inventory::InventoryManager;
 use crate::common::maker::{Maker, MakerError, MakerPulseResult};
-
+use crate::common::order_manager::OrderManager;
 use crate::common::orders::{CandidateCancel, CandidatePlacement, InflightCancel, ManagedOrder};
+use crate::common::Identifier;
 
 pub struct PerpsMaker {
     rpc_client: Arc<RpcClient>,
@@ -32,7 +33,6 @@ pub struct PerpsMaker {
     inflight_orders: RwLock<Vec<ManagedOrder>>,
     inflight_cancels: RwLock<Vec<InflightCancel>>,
     client_order_id: RwLock<u64>,
-    context: RwLock<ExecutionContext>,
     shutdown_sender: Arc<Sender<bool>>,
     context_sender: Arc<Sender<ExecutionContext>>,
     user_info: UserInfo,
@@ -78,52 +78,18 @@ impl PerpsMaker {
             open_orders: RwLock::new(Vec::new()),
             inflight_orders: RwLock::new(Vec::new()),
             inflight_cancels: RwLock::new(Vec::new()),
-            context: RwLock::new(ExecutionContext::default()),
         }
     }
 }
 
+impl Identifier for PerpsMaker {
+    fn symbol(&self) -> &str {
+        self.symbol.as_str()
+    }
+}
+
 #[async_trait]
-impl Maker for PerpsMaker {
-    type Input = ExecutionContext;
-    type InventoryManagerInput = GlobalContext;
-
-    fn rpc_client(&self) -> Arc<RpcClient> {
-        self.rpc_client.clone()
-    }
-
-    fn signer(&self) -> Arc<Keypair> {
-        self.signer.clone()
-    }
-
-    fn order_layer_count(&self) -> usize {
-        self.order_layers
-    }
-
-    fn layer_spacing_bps(&self) -> u16 {
-        self.layer_spacing
-    }
-
-    fn time_in_force(&self) -> u64 {
-        self.time_in_force
-    }
-
-    fn context_receiver(&self) -> Receiver<ExecutionContext> {
-        self.context_sender.subscribe()
-    }
-
-    fn shutdown_receiver(&self) -> Receiver<bool> {
-        self.shutdown_sender.subscribe()
-    }
-
-    async fn context_reader(&self) -> RwLockReadGuard<ExecutionContext> {
-        self.context.read().await
-    }
-
-    async fn context_writer(&self) -> RwLockWriteGuard<ExecutionContext> {
-        self.context.write().await
-    }
-
+impl OrderManager for PerpsMaker {
     async fn managed_orders_reader(&self) -> RwLockReadGuard<Vec<ManagedOrder>> {
         self.managed_orders.read().await
     }
@@ -155,30 +121,53 @@ impl Maker for PerpsMaker {
     async fn inflight_cancels_writer(&self) -> RwLockWriteGuard<Vec<InflightCancel>> {
         self.inflight_cancels.write().await
     }
+}
 
-    async fn pulse(&self) -> Result<MakerPulseResult, MakerError> {
-        let ctx = self.context_reader().await;
+#[async_trait]
+impl Maker for PerpsMaker
+where
+    PerpsMaker: Identifier,
+{
+    type Input = ExecutionContext;
+    type InventoryManagerInput = GlobalContext;
+
+    fn rpc_client(&self) -> Arc<RpcClient> {
+        self.rpc_client.clone()
+    }
+
+    fn signer(&self) -> Arc<Keypair> {
+        self.signer.clone()
+    }
+
+    fn order_layer_count(&self) -> usize {
+        self.order_layers
+    }
+
+    fn layer_spacing_bps(&self) -> u16 {
+        self.layer_spacing
+    }
+
+    fn time_in_force(&self) -> u64 {
+        self.time_in_force
+    }
+
+    fn context_receiver(&self) -> Receiver<ExecutionContext> {
+        self.context_sender.subscribe()
+    }
+
+    fn shutdown_receiver(&self) -> Receiver<bool> {
+        self.shutdown_sender.subscribe()
+    }
+
+    async fn pulse(&self, input: &<Self as Maker>::Input) -> Result<MakerPulseResult, MakerError> {
         let inventory_mngr = self.inventory_manager();
 
-        info!(
-            "[{}] Oracle Source: {:?} - Price: {}",
-            self.symbol, ctx.oracle_info.source, ctx.oracle_info.price,
-        );
-
-        let spread_info = inventory_mngr.get_spread(ctx.oracle_info.price);
+        let spread_info = inventory_mngr.get_spread(input.oracle_info.price);
         if spread_info.oracle_price == I80F48::ZERO {
             return Ok(MakerPulseResult::default());
         }
-        info!(
-            "[{}] Mid Price: {} - Best Bid: {} - Best Ask: {}",
-            self.symbol, spread_info.oracle_price, spread_info.bid, spread_info.ask,
-        );
 
-        let quote_volumes = inventory_mngr.get_quote_volumes(&ctx.global);
-        info!(
-            "[{}] Current delta: {} - Volumes - Bid: {} - Ask: {}",
-            self.symbol, quote_volumes.delta, quote_volumes.bid_size, quote_volumes.ask_size,
-        );
+        let quote_volumes = inventory_mngr.get_quote_volumes(&input.global);
         if quote_volumes.bid_size == I80F48::ZERO && quote_volumes.ask_size == I80F48::ZERO {
             return Ok(MakerPulseResult::default());
         }
@@ -317,9 +306,5 @@ impl Maker for PerpsMaker {
             ))
         }
         cancel_order_ixs
-    }
-
-    fn symbol(&self) -> &str {
-        self.symbol.as_str()
     }
 }
