@@ -82,7 +82,7 @@ pub struct ExecutionContext {
     pub oracle_info: OracleInfo,
 }
 
-pub trait OrdersContext {
+pub trait OrdersContext: Send + Sync {
     /// Gets the open orders.
     fn get_open_orders(&self) -> &[Order];
 

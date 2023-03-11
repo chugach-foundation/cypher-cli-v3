@@ -1,14 +1,18 @@
-use anchor_spl::dex::{self, serum_dex::state::OpenOrders};
+use anchor_lang::AnchorSerialize;
+use anchor_spl::dex::serum_dex::state::OpenOrders;
+use bytemuck::bytes_of;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
     cache_account,
     constants::QUOTE_TOKEN_DECIMALS,
+    dex,
     instructions::{
         new_spot_order as new_spot_order_ix, settle_spot_funds,
         update_account_margin as update_account_margin_ix,
     },
     utils::{
-        convert_coin_to_decimals, convert_coin_to_lots, convert_price_to_decimals,
+        convert_coin_to_decimals, convert_coin_to_decimals_fixed, convert_coin_to_lots,
+        convert_pc_to_decimals_fixed, convert_price_to_decimals, convert_price_to_decimals_fixed,
         convert_price_to_lots, derive_account_address, derive_pool_node_vault_signer_address,
         derive_public_clearing_address, derive_spot_open_orders_address,
         derive_sub_account_address, fixed_to_ui, gen_dex_vault_signer_key,
@@ -16,7 +20,7 @@ use cypher_client::{
     Clearing, CypherAccount, NewSpotOrderArgs, OrderType, SelfTradeBehavior, Side,
 };
 use cypher_utils::{
-    contexts::{CypherContext, SerumOrderBookContext},
+    contexts::{CypherContext, GenericOpenOrders, SerumOpenOrdersContext, SerumOrderBookContext},
     utils::{get_cypher_zero_copy_account, get_program_accounts, send_transactions},
 };
 use fixed::types::I80F48;
@@ -24,7 +28,7 @@ use solana_client::rpc_filter::{Memcmp, MemcmpEncodedBytes, RpcFilterType};
 use solana_sdk::{pubkey::Pubkey, signer::Signer};
 use std::{
     error,
-    ops::Mul,
+    ops::{Add, Mul},
     str::{from_utf8, FromStr},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -359,7 +363,7 @@ pub async fn list_spot_open_orders(
     };
     println!("Using Authority: {}", authority);
 
-    let _ctx = match CypherContext::load(rpc_client).await {
+    let ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
             eprintln!("Failed to load Cypher Context.");
@@ -370,7 +374,7 @@ pub async fn list_spot_open_orders(
     let filters = vec![
         RpcFilterType::DataSize(12 + std::mem::size_of::<OpenOrders>() as u64),
         RpcFilterType::Memcmp(Memcmp {
-            offset: 12 + 8, // offset for authority pubkey on cypher's orders accounts, includes anchor discriminator
+            offset: 45,
             bytes: MemcmpEncodedBytes::Base58(authority.to_string()),
             encoding: None,
         }),
@@ -386,6 +390,152 @@ pub async fn list_spot_open_orders(
     if orders_accounts.is_empty() {
         println!("No Orders Accounts found.");
         return Ok(CliResult {});
+    }
+
+    let markets = ctx.spot_markets.read().await;
+    let pools = ctx.pools.read().await;
+
+    for (pubkey, account) in orders_accounts.iter() {
+        println!("Orders Account: {}", pubkey);
+        let orders_account = SerumOpenOrdersContext::from_account_data(pubkey, &account.data);
+        let orders_account_market = orders_account.state.market;
+        let market_pubkey = Pubkey::new(bytes_of(&orders_account_market));
+        let market = match markets.iter().find(|m| m.address == market_pubkey) {
+            Some(m) => m,
+            None => {
+                continue;
+            }
+        };
+        let pool = match pools.iter().find(|p| p.state.dex_market == market_pubkey) {
+            Some(m) => m,
+            None => {
+                continue;
+            }
+        };
+        let pool_name = from_utf8(&pool.state.pool_name)
+            .unwrap()
+            .trim_matches(char::from(0));
+
+        println!(
+            "\n| {:^15} | {:^15} | {:^15} | {:^15} |",
+            "B. Locked", "B. Total", "Q. Locked", "Q. Total",
+        );
+
+        if orders_account.state.native_coin_free != 0
+            || orders_account.state.native_coin_total != 0
+            || orders_account.state.native_pc_free != 0
+            || orders_account.state.native_pc_total != 0
+        {
+            println!(
+                "| {:>15.4} | {:>15.4} | {:>15.4} | {:>15.4} |",
+                fixed_to_ui(
+                    convert_coin_to_decimals_fixed(
+                        orders_account.state.native_coin_total
+                            - orders_account.state.native_coin_free,
+                        market.state.coin_lot_size
+                    ),
+                    pool.state.config.decimals
+                ),
+                fixed_to_ui(
+                    convert_coin_to_decimals_fixed(
+                        orders_account.state.native_coin_total,
+                        market.state.coin_lot_size
+                    ),
+                    pool.state.config.decimals
+                ),
+                fixed_to_ui(
+                    convert_pc_to_decimals_fixed(
+                        orders_account.state.native_pc_total - orders_account.state.native_pc_free,
+                        market.state.pc_lot_size
+                    ),
+                    QUOTE_TOKEN_DECIMALS
+                ),
+                fixed_to_ui(
+                    convert_pc_to_decimals_fixed(
+                        orders_account.state.native_pc_total,
+                        market.state.pc_lot_size
+                    ),
+                    QUOTE_TOKEN_DECIMALS
+                ),
+            );
+        }
+
+        let book = match SerumOrderBookContext::load(
+            rpc_client,
+            &market.state,
+            &market.address,
+            &market.bids,
+            &market.asks,
+        )
+        .await
+        {
+            Ok(a) => a,
+            Err(e) => {
+                eprintln!("Failed to load Order Book Context.");
+                return Err(Box::new(CliError::ContextError(e)));
+            }
+        };
+
+        let open_orders = GenericOpenOrders::get_open_orders(&orders_account, &book);
+
+        println!(
+            "\n| {:^10} | {:^45} | {:^4} | {:^15} | {:^15} | {:^15} |",
+            "Name", "Order ID", "Side", "Base Qty.", "Notional Size", "Price",
+        );
+
+        let mut bid_base_qty = I80F48::ZERO;
+        let mut bid_quote_qty = I80F48::ZERO;
+        let mut ask_base_qty = I80F48::ZERO;
+        let mut ask_quote_qty = I80F48::ZERO;
+
+        for order in open_orders.iter() {
+            let quote_quantity = fixed_to_ui(
+                convert_pc_to_decimals_fixed(order.quote_quantity, market.state.pc_lot_size),
+                QUOTE_TOKEN_DECIMALS,
+            );
+            let base_quantity = fixed_to_ui(
+                convert_coin_to_decimals_fixed(order.base_quantity, market.state.coin_lot_size),
+                pool.state.config.decimals,
+            );
+            if order.side == Side::Bid {
+                bid_base_qty = bid_base_qty.add(base_quantity);
+                bid_quote_qty = bid_quote_qty.add(quote_quantity);
+            } else {
+                ask_base_qty = ask_base_qty.add(base_quantity);
+                ask_quote_qty = ask_quote_qty.add(quote_quantity);
+            }
+            println!(
+                "| {:^10} | {:^45} | {:<4} | {:>15.2} | {:>15.2} | {:>15.6} |",
+                pool_name,
+                order.order_id,
+                order.side.to_string(),
+                base_quantity,
+                quote_quantity,
+                fixed_to_ui(
+                    convert_price_to_decimals_fixed(
+                        order.price,
+                        market.state.coin_lot_size,
+                        10u64.pow(pool.state.config.decimals as u32),
+                        market.state.pc_lot_size
+                    ),
+                    QUOTE_TOKEN_DECIMALS
+                ),
+            );
+        }
+
+        println!(
+            "\n| {:^10} | {:^15} | {:^15} |",
+            "Side", "Base Qty.", "Quote Qty."
+        );
+
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Buy", bid_base_qty, bid_quote_qty
+        );
+        println!(
+            "| {:^10} | {:>15.4} | {:>15.4} |",
+            "Sell", ask_base_qty, ask_quote_qty
+        );
     }
 
     Ok(CliResult {})
@@ -459,7 +609,7 @@ pub async fn process_spot_market_order(
         .map(|c| c.sub_account)
         .collect::<Vec<Pubkey>>();
 
-    let _orders_account_state = match get_or_create_spot_orders_account(
+    let _ = match get_or_create_spot_orders_account(
         rpc_client,
         keypair,
         &master_account,
@@ -859,15 +1009,6 @@ pub async fn process_spot_settle_funds(
 
     let (public_clearing, _) = derive_public_clearing_address();
 
-    let _clearing =
-        match get_cypher_zero_copy_account::<Clearing>(rpc_client, &public_clearing).await {
-            Ok(ctx) => ctx,
-            Err(e) => {
-                eprintln!("Failed to load Clearing.");
-                return Err(Box::new(CliError::ClientError(e)));
-            }
-        };
-
     let ctx = match CypherContext::load(rpc_client).await {
         Ok(ctx) => ctx,
         Err(e) => {
@@ -882,9 +1023,7 @@ pub async fn process_spot_settle_funds(
         .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == symbol)
         .unwrap();
     let asset_pool_node = asset_pool.pool_nodes.first().unwrap(); // TODO: change this
-    let _pool_name = from_utf8(&asset_pool.state.pool_name)
-        .unwrap()
-        .trim_matches(char::from(0));
+
     let quote_pool = pools
         .iter()
         .find(|p| from_utf8(&p.state.pool_name).unwrap().trim_matches('\0') == "USDC")

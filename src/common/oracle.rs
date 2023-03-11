@@ -6,6 +6,8 @@ use log::{info, warn};
 use thiserror::Error;
 use tokio::sync::broadcast::{error::SendError, Receiver, Sender};
 
+use super::Identifier;
+
 #[derive(Error, Debug)]
 pub enum OracleProviderError {
     #[error("Send error: {:?}", self)]
@@ -68,7 +70,7 @@ pub struct OracleInfo {
 ///
 /// This trait can be implemented to offer different execution environments for strategies.
 #[async_trait]
-pub trait OracleProvider: Send + Sync {
+pub trait OracleProvider: Send + Sync + Identifier {
     /// The input data of the [`OracleProvider`].
     type Input: Send + Sync + Clone;
 
@@ -82,9 +84,8 @@ pub trait OracleProvider: Send + Sync {
     async fn start(&self) -> Result<(), OracleProviderError> {
         let mut input_receiver = self.input_receiver();
         let mut shutdown_receiver = self.shutdown_receiver();
-        let symbol = self.symbol();
 
-        info!("[{}] Starting oracle provider..", symbol);
+        info!("[{}] Starting oracle provider..", self.symbol());
 
         loop {
             tokio::select! {
@@ -93,25 +94,26 @@ pub trait OracleProvider: Send + Sync {
                         Ok(input) => {
                             match self.process_update(&input) {
                                 Ok(output) => {
+                                    info!("[{}] Oracle Info: {:?}", self.symbol(), output);
                                     match self.send(output).await {
-                                        Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", symbol, r),
+                                        Ok(r) => info!("[{}] Successfully sent context update to {} receivers.", self.symbol(), r),
                                         Err(e) => {
-                                            warn!("[{}] There was an error sending oracle price update. Error: {:?}", symbol, e);
+                                            warn!("[{}] There was an error sending oracle price update. Error: {:?}", self.symbol(), e);
                                         }
                                     };
                                 },
                                 Err(e) => {
-                                    warn!("[{}] There was an error processing account update. Error: {:?}", symbol, e);
+                                    warn!("[{}] There was an error processing account update. Error: {:?}", self.symbol(), e);
                                 }
                             };
                         },
                         Err(e) => {
-                            warn!("[{}] There was an error receiving account state update. Error: {:?}", symbol, e);
+                            warn!("[{}] There was an error receiving account state update. Error: {:?}", self.symbol(), e);
                         }
                     }
                 }
                 _ = shutdown_receiver.recv() => {
-                    info!("[{}] Shutdown signal received, stopping..", symbol);
+                    info!("[{}] Shutdown signal received, stopping..", self.symbol());
                     break;
                 }
             }
@@ -137,7 +139,4 @@ pub trait OracleProvider: Send + Sync {
 
     /// Subscribes to the [`OracleProvider`].
     fn subscribe(&self) -> Receiver<OracleInfo>;
-
-    /// The symbol that this [`OracleProvider`] represents.
-    fn symbol(&self) -> &str;
 }

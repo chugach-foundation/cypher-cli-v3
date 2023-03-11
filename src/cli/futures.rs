@@ -1,3 +1,4 @@
+use anchor_lang::AnchorSerialize;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use cypher_client::{
     cache_account,

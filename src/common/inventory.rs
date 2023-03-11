@@ -1,5 +1,7 @@
 use fixed::types::I80F48;
 
+use super::Identifier;
+
 /// Reoresents information about desired quote volumes.
 #[derive(Debug, Default)]
 pub struct QuoteVolumes {
@@ -17,7 +19,7 @@ pub struct SpreadInfo {
 }
 
 /// Defines shared functionality that different inventory managers should implement.
-pub trait InventoryManager: Send + Sync {
+pub trait InventoryManager: Send + Sync + Identifier {
     /// The input type for the [`InventoryManager`].
     type Input: Clone + Send + Sync;
 
