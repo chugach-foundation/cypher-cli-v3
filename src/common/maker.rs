@@ -569,11 +569,11 @@ pub trait Maker: Send + Sync + OrderManager + Identifier {
                     // add these submitted orders to the inflight orders tracker
                     let mut inflight_orders = self.inflight_orders_writer().await;
                     for sig in sigs.iter() {
-                        if sig.signature.is_some() {
+                        if let Some(signature) = sig.signature {
                             info!(
                                 "[{}] Sucessfully submitted transaction. Signature: {}.",
                                 self.symbol(),
-                                sig.signature.unwrap()
+                                signature
                             );
                             let mut candidates_submitted = Vec::new();
                             for candidate in sig.candidates.iter() {
@@ -659,11 +659,11 @@ pub trait Maker: Send + Sync + OrderManager + Identifier {
                     let mut inflight_cancels = self.inflight_cancels_writer().await;
                     let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
                     for sig in sigs.iter() {
-                        if sig.signature.is_some() {
+                        if let Some(signature) = sig.signature {
                             info!(
                                 "[{}] Sucessfully submitted transaction. Signature: {}.",
                                 self.symbol(),
-                                sig.signature.unwrap()
+                                signature
                             );
                             let mut candidates_submitted = Vec::new();
                             for candidate in sig.candidates.iter() {

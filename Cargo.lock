@@ -1057,7 +1057,7 @@ dependencies = [
 [[package]]
 name = "cypher-client"
 version = "3.0.0"
-source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?rev=d359072#d359072dc31ccd16f01e536e050cc12450236d5d"
+source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?branch=devnet?rev=2178554#2178554bd8231195e47a0807bdb7123ba2c0d048"
 dependencies = [
  "agnostic-orderbook",
  "anchor-gen",
@@ -1075,7 +1075,7 @@ dependencies = [
 [[package]]
 name = "cypher-utils"
 version = "3.0.0"
-source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?rev=d359072#d359072dc31ccd16f01e536e050cc12450236d5d"
+source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?branch=devnet?rev=2178554#2178554bd8231195e47a0807bdb7123ba2c0d048"
 dependencies = [
  "agnostic-orderbook",
  "anchor-lang",
@@ -1458,7 +1458,7 @@ dependencies = [
 [[package]]
 name = "faucet-client"
 version = "0.1.0"
-source = "git+https://github.com/chugach-foundation/cypher-client-v3.git#84ed993fefdfcc2f1960ff7e0d54549395540d3a"
+source = "git+https://github.com/chugach-foundation/cypher-client-v3.git?branch=devnet?rev=2178554#2178554bd8231195e47a0807bdb7123ba2c0d048"
 dependencies = [
  "anchor-client",
  "anchor-gen",

@@ -14,27 +14,39 @@ pub struct ShapeFunctionInventoryManager {
     shape_num: I80F48,
     shape_denom: I80F48,
     spread: I80F48,
-    market_identifier: Pubkey,
-    is_derivative: bool,
     symbol: String,
+    maker_symbol: String,
+    maker_identifier: Pubkey,
+    maker_is_derivative: bool,
+    hedger_symbol: String,
+    hedger_identifier: Pubkey,
+    hedger_is_derivative: bool,
 }
 
 impl ShapeFunctionInventoryManager {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        market_identifier: Pubkey,
-        is_derivative: bool,
+        maker_symbol: String,
+        maker_identifier: Pubkey,
+        maker_is_derivative: bool,
+        hedger_symbol: String,
+        hedger_identifier: Pubkey,
+        hedger_is_derivative: bool,
         decimals: u8,
         exp_base: u32,
         max_quote: I80F48,
         shape_num: I80F48,
         shape_denom: I80F48,
         spread: I80F48,
-        symbol: String,
     ) -> Self {
+        let symbol = format!("{}/{}", maker_symbol, hedger_symbol);
         Self {
-            market_identifier,
-            is_derivative,
+            maker_symbol,
+            maker_identifier: maker_identifier,
+            maker_is_derivative: maker_is_derivative,
+            hedger_symbol,
+            hedger_identifier: hedger_identifier,
+            hedger_is_derivative: hedger_is_derivative,
             decimals,
             exp_base,
             max_quote,
@@ -60,23 +72,48 @@ where
 
     fn get_delta(&self, ctx: &GlobalContext) -> I80F48 {
         let user_ctx = &ctx.user;
-        let sub_account_ctx = user_ctx.sub_account_ctxs.first(); // might need rework
-        let sub_account = match sub_account_ctx {
-            Some(a) => a,
-            None => return I80F48::ZERO,
+
+        let maker_sub_account_ctx = user_ctx.get_sub_account_with_position(&self.maker_identifier);
+        let maker_position = if let Some(maker_sub_account_ctx) = maker_sub_account_ctx {
+            match maker_sub_account_ctx.get_position(&self.maker_identifier) {
+                Some(pos) => {
+                    if self.maker_is_derivative {
+                        pos.derivative.total_position()
+                    } else {
+                        pos.spot.position()
+                    }
+                }
+                None => I80F48::ZERO,
+            }
+        } else {
+            I80F48::ZERO
         };
 
-        let position = sub_account.get_position(&self.market_identifier);
-        let delta = match position {
-            Some(pos) => {
-                if self.is_derivative {
-                    pos.derivative.total_position()
-                } else {
-                    pos.spot.position()
+        let hedger_sub_account_ctx =
+            user_ctx.get_sub_account_with_position(&self.hedger_identifier);
+        let hedger_position = if let Some(hedger_sub_account_ctx) = hedger_sub_account_ctx {
+            match hedger_sub_account_ctx.get_position(&self.hedger_identifier) {
+                Some(pos) => {
+                    if self.hedger_is_derivative {
+                        pos.derivative.total_position()
+                    } else {
+                        pos.spot.position()
+                    }
                 }
+                None => I80F48::ZERO,
             }
-            None => I80F48::ZERO,
+        } else {
+            I80F48::ZERO
         };
+
+        let delta = maker_position - hedger_position;
+        info!(
+            "[{}] Maker Position: {} - Hedger Position: {} - Delta: {}",
+            self.symbol(),
+            maker_position,
+            hedger_position,
+            delta
+        );
 
         delta
     }

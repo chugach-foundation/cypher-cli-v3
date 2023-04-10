@@ -38,10 +38,15 @@ pub async fn send_cancels(
 
     for (idx, ix) in ixs.iter().enumerate() {
         if !txn_builder.is_empty() {
+            // let's simply do the worst case math without checking for duplicate keys for now
+            let ix_len = ix.accounts.len() * 32 + ix.data.len();
             let tx = txn_builder.build(blockhash, signer, None);
+            let tx_len = tx.message_data().len();
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
-            if tx.message_data().len() > 1100 {
+            // 1168 bytes is the absolute maximum tx size without at least one signature
+            // since we know that this code is supposed to only have one signature, it's relatively safe we do this
+            if tx_len + ix_len > 1168 {
                 let res = send_transaction(rpc_client, &tx, confirm).await;
                 match res {
                     Ok(s) => {
@@ -131,10 +136,15 @@ pub async fn send_placements(
 
     for (idx, ix) in ixs.iter().enumerate() {
         if !txn_builder.is_empty() {
+            // let's simply do the worst case math without checking for duplicate keys for now
+            let ix_len = ix.accounts.len() * 32 + ix.data.len();
             let tx = txn_builder.build(blockhash, signer, None);
+            let tx_len = tx.message_data().len();
             // we do this to attempt to pack as many ixs in a tx as possible
             // there's more efficient ways to do it but we'll do it in the future
-            if tx.message_data().len() > 1100 {
+            // 1168 bytes is the absolute maximum tx size without at least one signature
+            // since we know that this code is supposed to only have one signature, it's relatively safe we do this
+            if tx_len + ix_len > 1168 {
                 let res = send_transaction(rpc_client, &tx, confirm).await;
                 match res {
                     Ok(s) => {

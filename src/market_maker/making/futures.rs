@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use cypher_client::constants::QUOTE_TOKEN_DECIMALS;
-use cypher_client::instructions::{cancel_futures_order, new_futures_order};
+use cypher_client::instructions::{cancel_futures_orders, multiple_new_futures_orders};
 use cypher_client::utils::{convert_coin_to_lots, convert_price_to_lots};
 use cypher_client::{cache_account, CancelOrderArgs, DerivativeOrderType, NewDerivativeOrderArgs};
 use cypher_utils::contexts::Order;
@@ -188,6 +188,7 @@ where
     ) -> (Vec<Instruction>, Vec<ManagedOrder>) {
         let mut client_order_id = self.client_order_id.write().await;
         let mut new_order_ixs = Vec::new();
+        let mut new_order_args = Vec::new();
         let mut managed_orders = Vec::new();
 
         let time_in_force = self.time_in_force();
@@ -195,7 +196,7 @@ where
         let cur_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
         let max_ts = cur_ts.as_secs() + time_in_force;
 
-        for order_placement in order_placements {
+        for (idx, order_placement) in order_placements.iter().enumerate() {
             // OBS: this might be subject to changes, there's more efficient ways to do this obviously :)
             let limit_price = convert_price_to_lots(
                 order_placement
@@ -225,31 +226,16 @@ where
                 max_quote_qty,
                 *client_order_id
             );
-            new_order_ixs.push(new_futures_order(
-                &self.user_info.clearing,
-                &cache_account::id(),
-                &self.user_info.master_account,
-                &self.user_info.sub_account,
-                &self.market_info.market,
-                &self.market_info.orders,
-                &self.market_info.price_history,
-                &self.market_info.orderbook,
-                &self.market_info.event_queue,
-                &self.market_info.bids,
-                &self.market_info.asks,
-                self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
-                &self.signer.pubkey(),
-                NewDerivativeOrderArgs {
-                    side: order_placement.side,
-                    limit_price,
-                    max_base_qty,
-                    max_quote_qty,
-                    order_type: DerivativeOrderType::PostOnly,
-                    client_order_id: *client_order_id,
-                    limit: u16::MAX,
-                    max_ts,
-                },
-            ));
+            new_order_args.push(NewDerivativeOrderArgs {
+                side: order_placement.side,
+                limit_price,
+                max_base_qty,
+                max_quote_qty,
+                order_type: DerivativeOrderType::PostOnly,
+                client_order_id: *client_order_id,
+                limit: u16::MAX,
+                max_ts,
+            });
             managed_orders.push(ManagedOrder {
                 price_lots: limit_price,
                 base_quantity_lots: max_base_qty,
@@ -265,6 +251,48 @@ where
                 layer: order_placement.layer,
             });
             *client_order_id += 1;
+
+            // this method is good to place roughly 15 orders with one instruction
+            // so let's be conservtive and cap it at ~12 in case we need to pass other instructions before
+            if idx >= 11 {
+                new_order_ixs.push(multiple_new_futures_orders(
+                    &self.user_info.clearing,
+                    &cache_account::id(),
+                    &self.user_info.master_account,
+                    &self.user_info.sub_account,
+                    &self.market_info.market,
+                    &self.market_info.orders,
+                    &self.market_info.price_history,
+                    &self.market_info.orderbook,
+                    &self.market_info.event_queue,
+                    &self.market_info.bids,
+                    &self.market_info.asks,
+                    self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
+                    &self.signer.pubkey(),
+                    new_order_args.clone(),
+                ));
+                new_order_args.clear();
+            }
+        }
+
+        // check if there are args but no ix was added
+        if new_order_ixs.is_empty() && !new_order_args.is_empty() {
+            new_order_ixs.push(multiple_new_futures_orders(
+                &self.user_info.clearing,
+                &cache_account::id(),
+                &self.user_info.master_account,
+                &self.user_info.sub_account,
+                &self.market_info.market,
+                &self.market_info.orders,
+                &self.market_info.price_history,
+                &self.market_info.orderbook,
+                &self.market_info.event_queue,
+                &self.market_info.bids,
+                &self.market_info.asks,
+                self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
+                &self.signer.pubkey(),
+                new_order_args,
+            ));
         }
 
         (new_order_ixs, managed_orders)
@@ -272,8 +300,9 @@ where
 
     async fn build_cancel_order_ixs(&self, order_cancels: &[CandidateCancel]) -> Vec<Instruction> {
         let mut cancel_order_ixs = Vec::new();
+        let mut cancel_order_args = Vec::new();
 
-        for order_cancel in order_cancels {
+        for (idx, order_cancel) in order_cancels.iter().enumerate() {
             let is_client_id = order_cancel.order_id == u128::default();
             let order_id = if is_client_id {
                 order_cancel.client_order_id as u128
@@ -286,7 +315,36 @@ where
                 is_client_id,
                 order_id,
             );
-            cancel_order_ixs.push(cancel_futures_order(
+            cancel_order_args.push(CancelOrderArgs {
+                order_id,
+                side: order_cancel.side,
+                is_client_id,
+            });
+
+            // this method is good to cancel around 30 orders with one instruction
+            // but let's be conservative in case more tx space is needed before/after
+            if idx >= 20 {
+                cancel_order_ixs.push(cancel_futures_orders(
+                    &self.user_info.clearing,
+                    &cache_account::id(),
+                    &self.user_info.master_account,
+                    &self.user_info.sub_account,
+                    &self.market_info.market,
+                    &self.market_info.orders,
+                    &self.market_info.orderbook,
+                    &self.market_info.event_queue,
+                    &self.market_info.bids,
+                    &self.market_info.asks,
+                    self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
+                    &self.signer.pubkey(),
+                    cancel_order_args.clone(),
+                ));
+                cancel_order_args.clear();
+            }
+        }
+
+        if cancel_order_ixs.is_empty() && !cancel_order_args.is_empty() {
+            cancel_order_ixs.push(cancel_futures_orders(
                 &self.user_info.clearing,
                 &cache_account::id(),
                 &self.user_info.master_account,
@@ -299,13 +357,10 @@ where
                 &self.market_info.asks,
                 self.market_info.quote_pool_nodes.first().unwrap(), // TODO: this should be done differently
                 &self.signer.pubkey(),
-                CancelOrderArgs {
-                    order_id,
-                    side: order_cancel.side,
-                    is_client_id,
-                },
+                cancel_order_args,
             ))
         }
+
         cancel_order_ixs
     }
 }
