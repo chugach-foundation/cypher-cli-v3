@@ -274,23 +274,29 @@ pub async fn process_market_maker_command(
         }
     };
 
-    let maker_inventory_manager =
-        match get_inventory_manager_from_config(&cypher_ctx, &maker_context_info, &config).await {
-            Ok(im) => im,
-            Err(e) => {
-                warn!(
-                    "There was an error preparing Maker Inventory Manager: {:?}",
-                    e
-                );
-                return Err(Box::new(CliError::MarketMaker(e)));
-            }
-        };
+    let inventory_manager = match get_inventory_manager_from_config(
+        &cypher_ctx,
+        &maker_context_info,
+        &hedger_context_info,
+        &config,
+    )
+    .await
+    {
+        Ok(im) => im,
+        Err(e) => {
+            warn!(
+                "There was an error preparing Maker Inventory Manager: {:?}",
+                e
+            );
+            return Err(Box::new(CliError::MarketMaker(e)));
+        }
+    };
 
     let maker = match get_maker_from_config(
         rpc_client,
         shutdown_sender.clone(),
         maker_context_manager.sender(),
-        maker_inventory_manager.clone(),
+        inventory_manager.clone(),
         &maker_context_info,
         &config,
     )
@@ -303,23 +309,11 @@ pub async fn process_market_maker_command(
         }
     };
 
-    let hedger_inventory_manager =
-        match get_inventory_manager_from_config(&cypher_ctx, &hedger_context_info, &config).await {
-            Ok(im) => im,
-            Err(e) => {
-                warn!(
-                    "There was an error preparing Hedger Inventory Manager: {:?}",
-                    e
-                );
-                return Err(Box::new(CliError::MarketMaker(e)));
-            }
-        };
-
     let hedger = match get_hedger_from_config(
         rpc_client,
         shutdown_sender.clone(),
         hedger_context_manager.sender(),
-        hedger_inventory_manager.clone(),
+        inventory_manager.clone(),
         &hedger_context_info,
         &config,
     ) {

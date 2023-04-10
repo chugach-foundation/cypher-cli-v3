@@ -22,7 +22,7 @@ use crate::{
             builder::ContextBuilder, manager::ContextManager, ContextInfo, ExecutionContext,
             GlobalContext, OperationContext,
         },
-        hedger::Hedger,
+        hedger::{self, Hedger},
         info::{
             Accounts, FuturesMarketInfo, MarketMetadata, PerpMarketInfo, SpotMarketInfo, UserInfo,
         },
@@ -295,34 +295,44 @@ pub async fn get_context_info(
 /// Gets the appropriate [`InventoryManager`] for the given config.
 pub async fn get_inventory_manager_from_config(
     cypher_ctx: &CypherContext,
-    context_info: &ContextInfo,
+    maker_context_info: &ContextInfo,
+    hedger_context_info: &ContextInfo,
     config: &Config<MarketMakerConfig>,
 ) -> Result<Arc<dyn InventoryManager<Input = GlobalContext> + Send>, Error> {
-    info!("Preparing Inventory Manager for {}..", context_info.symbol);
+    info!(
+        "Preparing Inventory Manager for {} - {}..",
+        maker_context_info.symbol, hedger_context_info.symbol,
+    );
 
     info!(
         "Inventory Manager Config: {:?}",
         config.inner.inventory_config
     );
 
-    let decimals = get_decimals_for_symbol(cypher_ctx, context_info.symbol.as_str()).await?;
+    let decimals = get_decimals_for_symbol(cypher_ctx, maker_context_info.symbol.as_str()).await?;
 
-    let market_identifier = match &context_info.context_accounts {
-        Accounts::Futures(f) => f.market,
-        Accounts::Perpetuals(p) => p.market,
-        Accounts::Spot(s) => s.asset_mint,
+    let (maker_market_identifier, maker_is_derivative) = match &maker_context_info.context_accounts
+    {
+        Accounts::Futures(f) => (f.market, true),
+        Accounts::Perpetuals(p) => (p.market, true),
+        Accounts::Spot(s) => (s.asset_mint, false),
     };
 
-    let is_derivative = match &context_info.context_accounts {
-        Accounts::Futures(_) => true,
-        Accounts::Perpetuals(_) => true,
-        Accounts::Spot(_) => false,
-    };
+    let (hedger_market_identifier, hedger_is_derivative) =
+        match &hedger_context_info.context_accounts {
+            Accounts::Futures(f) => (f.market, true),
+            Accounts::Perpetuals(p) => (p.market, true),
+            Accounts::Spot(s) => (s.asset_mint, false),
+        };
 
     let inventory_mngr: Arc<dyn InventoryManager<Input = GlobalContext> + Send> =
         Arc::new(ShapeFunctionInventoryManager::new(
-            market_identifier,
-            is_derivative,
+            maker_context_info.symbol.to_string(),
+            maker_market_identifier,
+            maker_is_derivative,
+            hedger_context_info.symbol.to_string(),
+            hedger_market_identifier,
+            hedger_is_derivative,
             decimals,
             config.inner.inventory_config.exp_base,
             I80F48::from_num::<f64>(config.inner.maker_config.max_quote),
@@ -332,7 +342,6 @@ pub async fn get_inventory_manager_from_config(
                 .checked_add(I80F48::from(config.inner.maker_config.spread))
                 .and_then(|n| n.checked_div(I80F48::from(BPS_UNIT)))
                 .unwrap(),
-            context_info.symbol.to_string(),
         ));
 
     Ok(inventory_mngr)
